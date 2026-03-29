@@ -1,0 +1,6 @@
+no redesign, no new motifs, no added embroidery, no print enhancement,
+no symmetry correction, no color shift, no saturation or contrast boost,
+no shiny finish if matte specified, no smoothing of fabric texture,
+no added borders or hems, no extending prints beyond defined areas,
+no changing neckline shape or depth, no sleeve length change,
+no accessories unless explicitly specified, no text, no logos, no watermark

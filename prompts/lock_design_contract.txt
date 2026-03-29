@@ -1,0 +1,20 @@
+LOCKED DESIGN CONTRACT (NON-NEGOTIABLE)
+
+The following JSON is the ONLY source of truth for the garment design.
+All visual outputs must match this JSON EXACTLY.
+
+Rules:
+1) You are NOT allowed to invent, enhance, beautify, or correct any detail.
+2) If a design element is missing or empty in JSON, it MUST remain absent in images.
+3) The smallest_printed_design_element must be preserved in size, shape, density, and placement.
+4) No color shifts, no symmetry correction, no print extension.
+5) Borders, hems, sleeves, and neckline must match presence/absence exactly.
+6) If any conflict arises between common fashion sense and the JSON, the JSON ALWAYS wins.
+7) Violation of any rule is a hard failure.
+8) If repeating_pattern_reference.repeat_source_provided == "yes":
+- The repeating pattern image is the absolute authority
+- Pattern must be tiled exactly as shown
+- No rescaling, re-spacing, or motif recomposition allowed
+- Garment images must appear as if cut from this exact fabric roll
+
+Acknowledge silently and proceed to generate images.

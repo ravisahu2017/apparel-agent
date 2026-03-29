@@ -1,0 +1,5 @@
+Before generating the image, internally verify:
+- Every visible design element exists in the JSON
+- No design element exists outside the JSON
+- Dress worn by modal is exactly matching the dress in uploaded references
+If verification fails, regenerate internally until compliant.

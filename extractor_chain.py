@@ -1,0 +1,276 @@
+import os
+import json
+import base64
+import requests
+from pathlib import Path
+from tinydb import TinyDB
+from langchain_core.runnables import RunnableLambda
+from langchain_community.vectorstores import Chroma
+from clip_embeddings import CLIPEmbeddings
+
+
+class VisionExtractorChain:
+    """
+    Chain for:
+    1. Reading image
+    2. Extracting attributes via OpenRouter vision model
+    3. Saving structured output into TinyDB
+    4. Storing summary text in Chroma Vectorstore
+    """
+
+    def __init__(self, openrouter_key, openrouter_model="openai/gpt-4o", tinydb_path="vision_data.json", vectorstore_collection="images"):
+        self.api_key = openrouter_key
+        self.openrouter_model = openrouter_model
+        self.vectorstore_collection = vectorstore_collection
+        self.db = TinyDB(tinydb_path)
+        self.embeddings = CLIPEmbeddings()
+
+        self.vectorstore = Chroma(
+            collection_name = "vision_attributes",
+            embedding_function = self.embeddings
+        )
+
+    def get_image_files(self, input_folder):
+        # Get all images from folder
+        image_files = []
+        if os.path.exists(input_folder):
+            image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
+            for file in os.listdir(input_folder):
+                if Path(file).suffix.lower() in image_extensions:
+                    full_path = os.path.join(input_folder, file)
+                    image_files.append(full_path)
+                    print("DEBUG", f"Found image: {file} ({os.path.getsize(full_path)} bytes)")
+        else:
+            return {"error": f"Folder not found: {input_folder}"}
+        
+        if not image_files:
+            return {"error": f"No images found in {input_folder}. Checked extensions: jpg, jpeg, png, gif, webp"}
+        
+        print("INFO", f"Total images found: {len(image_files)}")
+        return image_files
+
+    def parse_response(self, inputs):
+        """
+        Parse and clean the response from vision model to ensure valid JSON output
+        
+        Args:
+            inputs: Dictionary containing the raw response from extract_attributes
+            
+        Returns:
+            Dictionary with clean JSON attributes
+        """
+        raw_response = inputs.get("raw_response", "")
+        
+        if not raw_response:
+            return {"error": "No response to parse"}
+        
+        # Try to parse as JSON directly
+        try:
+            attributes = json.loads(raw_response)
+            if isinstance(attributes, dict):
+                return attributes
+        except json.JSONDecodeError:
+            pass
+        
+        # Handle multiline JSON or text with JSON blocks
+        cleaned_response = raw_response.strip()
+        
+        # Remove common prefixes/suffixes
+        prefixes_to_remove = [
+            "```json",
+            "```",
+            "Here's the JSON:",
+            "JSON response:",
+            "Response:",
+            "Result:"
+        ]
+        
+        for prefix in prefixes_to_remove:
+            if cleaned_response.startswith(prefix):
+                cleaned_response = cleaned_response[len(prefix):].strip()
+        
+        # Find JSON blocks in text
+        json_start = cleaned_response.find('{')
+        json_end = cleaned_response.rfind('}') + 1
+        
+        if json_start != -1 and json_end > json_start:
+            json_str = cleaned_response[json_start:json_end]
+            try:
+                attributes = json.loads(json_str)
+                if isinstance(attributes, dict):
+                    return attributes
+            except json.JSONDecodeError:
+                pass
+        
+        # Try to extract JSON from each line
+        lines = cleaned_response.split('\n')
+        for line in lines:
+            line = line.strip()
+            if line.startswith('{') and line.endswith('}'):
+                try:
+                    attributes = json.loads(line)
+                    if isinstance(attributes, dict):
+                        return attributes
+                except json.JSONDecodeError:
+                    continue
+        
+        # If all parsing fails, return as raw text
+        return {
+            "raw": cleaned_response,
+            "error": "Could not parse JSON from response",
+            "parsing_failed": True
+        }
+
+    # ---------------------------------------------
+    # STEP 1 → Load image file
+    # ---------------------------------------------
+    def load_image(self, inputs):
+        input_folder = inputs["input_folder"]
+        image_files = self.get_image_files(input_folder)
+        
+        # Convert images to base64
+        image_content = []
+        for img_path in sorted(image_files):
+            try:
+                with open(img_path, "rb") as img_file:
+                    image_data = img_file.read()
+                    base64_image = base64.b64encode(image_data).decode("utf-8")
+                    
+                    # Determine image type from extension
+                    file_ext = Path(img_path).suffix.lower()
+                    if file_ext in ['.jpg', '.jpeg']:
+                        media_type = "image/jpeg"
+                    elif file_ext == '.png':
+                        media_type = "image/png"
+                    elif file_ext == '.gif':
+                        media_type = "image/gif"
+                    elif file_ext == '.webp':
+                        media_type = "image/webp"
+                    else:
+                        media_type = "image/jpeg"
+                    
+                    image_content.append({
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{media_type};base64,{base64_image}",
+                        },
+                    })
+                    print("INFO", f"Encoded image: {Path(img_path).name}")
+            except Exception as e:
+                print("ERROR", f"Error reading image {img_path}: {e}")
+                return {"error": f"Failed to read image {img_path}: {str(e)}"}
+        inputs["image_content"] = image_content
+        return inputs
+
+    # ---------------------------------------------
+    # STEP 2 → Vision model (OpenRouter)
+    # ---------------------------------------------
+    def extract_attributes(self, inputs):
+        """
+        Extract attributes from images using OpenRouter vision model
+        
+        Args:
+            inputs: Dictionary containing image_content list
+            
+        Returns:
+            Dictionary with extracted attributes
+        """
+        image_content = inputs["image_content"]
+        print("INFO", "Extracting attributes from images", len(image_content))
+
+
+        prompt = """
+        You are a fashion vision model. You have been given a kurti in the images. Analyze the kurti item in the images
+        and extract the following attributes:
+
+        - Type of garment  
+        - Patterns  
+        - Colors  
+        - Sleeves  
+        - Sleeve hem details
+        - Fabric type  
+        - Neck design  
+        - Border hem details
+        - Notable visual details  
+        - Style category  
+        - Keywords  
+
+        """
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+
+        payload = {
+            "model": self.openrouter_model,
+            "messages": [
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": [image_content[0]]}
+            ]
+        }
+
+        response = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers=headers,
+            json=payload
+        )
+
+        result = response.json()
+        print("INFO", "OpenRouter API response:", result)
+        
+        if "error" in result:
+            print("ERROR", f"OpenRouter API error: {result['error']}")
+            return {"error": result['error']}
+        
+        if "choices" not in result:
+            print("ERROR", f"Unexpected response format: {result}")
+            return {"error": "Unexpected response format"}
+        
+        raw_response = result["choices"][0]["message"]["content"]
+        
+        # Parse the response to ensure valid JSON
+        parsed_response = self.parse_response({"raw_response": raw_response})
+        inputs["raw"] = parsed_response
+        return inputs
+
+    # ---------------------------------------------
+    # STEP 3 → Save to TinyDB
+    # ---------------------------------------------
+    def save_to_tinydb(self, inputs):
+        record = {
+            "product_id": inputs["product_id"],
+            "attributes": inputs["raw"]
+        }
+
+        self.db.insert(record)
+        return inputs
+
+    # ---------------------------------------------
+    # STEP 5 → Add summary to Chroma vectorstore
+    # ---------------------------------------------
+    def add_images_to_vectorstore(self, inputs):
+        texts = []
+        metadatas = []
+        ids = []
+        s3_prefix = f"https://rs-apparels.s3.ap-south-1.amazonaws.com/{inputs['product_id']}/cleaned/"
+
+        image_files = self.get_image_files(inputs["input_folder"])
+
+        for i, path in enumerate(image_files):
+            view = path.split(".")[0]
+            
+            texts.append(f"{view} view of kurti")   # 👈 REQUIRED for RAG
+            metadatas.append({
+                "type": path,
+                "view": view,
+                "product_id": inputs.get("product_id", ""),
+                "s3_url": s3_prefix + path
+            })
+            ids.append(f"img_{i}")
+
+    # ---------------------------------------------
+    # RUNNER
+    # ---------------------------------------------
+    def invoke(self, inputs):
+        return self.chain().invoke(inputs)

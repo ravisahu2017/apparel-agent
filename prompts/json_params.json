@@ -1,0 +1,80 @@
+{
+  "product_type_and_style": {
+    "apparel_category": "",
+    "cut_style": "",
+    "length_description": "",
+    "fit_type": "",
+    "neck_style": "",
+    "sleeve_type": ""
+  },
+  "base_fabric_and_texture": {
+    "fabric_appearance": "",
+    "surface_finish": "",
+    "texture_visibility": "",
+    "fabric_weight_appearance": ""
+  },
+  "color_analysis": {
+    "primary_base_color": "",
+    "secondary_colors": [],
+    "accent_colors": []
+  },
+  "print_and_design_pattern": {
+    "pattern_type": "",
+    "print_technique_appearance": "",
+    "pattern_density": "",
+    "pattern_layout": "",
+    "pattern_orientation": ""
+  },
+  "pattern_layout_structure": {
+    "layout_type": "",
+    "orientation": "",
+    "column_or_panel_count": "",
+    "alternation_present": "",
+    "alternation_sequence": "",
+    "column_design_differences": ""
+  },
+  "smallest_printed_design_element": {
+    "motif_type": "",
+    "approximate_relative_size": "",
+    "shape": "",
+    "edge_quality": "",
+    "fill_style": ""
+  },
+  "repeating_pattern_reference": {
+    "repeat_source_provided": "",
+    "source_filename": "",
+    "repeat_unit_shape": "",
+    "repeat_unit_dimensions_relative": "",
+    "repeat_direction": "",
+    "repeat_alignment_type": "",
+    "edge_continuity": ""
+  },
+  "neckline_design_details": {
+    "neck_shape": "",
+    "neck_depth": "",
+    "presence_of_print_or_border": "",
+    "border_thickness": "",
+    "border_pattern_description": "",
+    "print_alignment_symmetry": ""
+  },
+  "bottom_border_and_hem_design": {
+    "hem_border_present": "",
+    "border_style": "",
+    "border_thickness_description": "",
+    "pattern_repetition_type": "",
+    "color_contrast_with_base": ""
+  },
+  "sleeve_border_and_hem_design": {
+    "sleeve_length": "",
+    "sleeve_edge_finish": "",
+    "border_continuity_reference": "",
+    "border_width_description": "",
+    "print_clarity": ""
+  },
+  "stitching_and_construction_details": {
+    "visible_stitch_lines": "",
+    "stitch_type_appearance": "",
+    "button_or_placket_presence": ""
+  },
+  "validation_note": "This extraction is based strictly on visual evidence. No assumptions or enhancements have been made."
+}
