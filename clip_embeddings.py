@@ -22,7 +22,15 @@ class CLIPEmbeddings:
             with torch.no_grad():
                 emb = self.model.get_text_features(**inputs)
 
-        return emb[0].numpy()
+        # Ensure we get the tensor and convert to numpy
+        if hasattr(emb, 'pooler_output'):
+            # If it's a model output object, get the pooler_output
+            tensor = emb.pooler_output
+        else:
+            # If it's already a tensor
+            tensor = emb
+            
+        return tensor.detach().cpu().numpy().flatten()
 
     def embed_documents(self, docs):
         return [self.embed_query(doc) for doc in docs]

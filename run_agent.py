@@ -80,7 +80,6 @@ def extract():
 if __name__ == "__main__":
     print("------------------------\nExtracting attributes...\n")
     extract()
-    print("------------------------\nAttributes:\n", attributes)
     print("-----------------------------------------\n")
     print("------------------------\nGenerating kurti...\n")
     #generate()

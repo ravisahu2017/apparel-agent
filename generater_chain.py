@@ -5,7 +5,7 @@ from langchain_openai import ChatOpenAI
 from langchain_core.prompts import PromptTemplate
 from clip_embeddings import CLIPEmbeddings
 from langchain_core.runnables import RunnableLambda
-from langchain_community.vectorstores import Chroma
+from langchain_chroma import Chroma
 
 class GeneratorChain:
     """

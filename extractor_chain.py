@@ -5,7 +5,7 @@ import requests
 from pathlib import Path
 from tinydb import TinyDB
 from langchain_core.runnables import RunnableLambda
-from langchain_community.vectorstores import Chroma
+from langchain_chroma import Chroma
 from clip_embeddings import CLIPEmbeddings
 
 

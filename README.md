@@ -1,4 +1,4 @@
-# Kurti Agent - AI-Powered Kurti Design Extraction & Generation
+# Apparel Agent - AI-Powered Apparel Design Extraction & Generation
 
 ## Architecture Overview
 
@@ -18,28 +18,13 @@ pip install openai langchain langchain-openai langchain-community chromadb pillo
 **Required Python version:** 3.10+
 
 **Key dependencies:**
-- `openai` - OpenAI API client for image generation
-- `langchain` - LLM framework for prompt generation
-- `chroma` - Vector database for image embeddings
-- `pillow` - Image processing
-- `python-dotenv` - Environment variable management
-- `tinydb` - Lightweight JSON database for storing extracted attributes
-- `requests` - HTTP client for API calls
+- `python=3.13`
+- all other dependencies are listed in `requirements.txt`
 
 ## Input Images Path
 
 Reference images should be placed in a directory and name of the directory should be assigned to 'INPUT_FOLDER' variable
 
-```
-input_images/
-├── back.png              # Back view of kurti
-├── neck.png              # Neck/close-up detail
-├── repeating_pattern.jpg # Pattern detail (CRITICAL for accuracy)
-├── front.png             # Front view
-└── fabric.jpg            # Fabric texture reference (optional)
-```
-
-**Important:** The `repeating_pattern.jpg` file gets special attention in the generation process for pattern matching accuracy.
 
 ## Workflow
 
