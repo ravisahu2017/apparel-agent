@@ -26,4 +26,3 @@ class CLIPEmbeddings:
 
     def embed_documents(self, docs):
         return [self.embed_query(doc) for doc in docs]
-

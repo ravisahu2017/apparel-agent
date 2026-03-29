@@ -259,15 +259,32 @@ class VisionExtractorChain:
 
         for i, path in enumerate(image_files):
             view = path.split(".")[0]
-            
+
             texts.append(f"{view} view of kurti")   # 👈 REQUIRED for RAG
             metadatas.append({
                 "type": path,
                 "view": view,
-                "product_id": inputs.get("product_id", ""),
+                "product_id": inputs["product_id"],
                 "s3_url": s3_prefix + path
             })
             ids.append(f"img_{i}")
+        print("--------------------\nadding images to vector", ids, texts, metadatas)
+        self.vectorstore.add_texts(
+            texts=texts,
+            metadatas=metadatas,
+            ids=ids
+        )
+
+    # ---------------------------------------------
+    # FULL CHAIN
+    # ---------------------------------------------
+    def chain(self):
+        return (
+            RunnableLambda(self.load_image)
+            | RunnableLambda(self.extract_attributes)
+            | RunnableLambda(self.save_to_tinydb)
+            | RunnableLambda(self.add_images_to_vectorstore)
+        )
 
     # ---------------------------------------------
     # RUNNER

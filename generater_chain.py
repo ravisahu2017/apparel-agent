@@ -1,6 +1,6 @@
 
 from openai import OpenAI
-from tinydb import TinyDB
+from tinydb import TinyDB, Query
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import PromptTemplate
 from clip_embeddings import CLIPEmbeddings
