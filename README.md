@@ -7,20 +7,19 @@ The system follows a **two-stage architecture**:
 1. **Design Extraction Stage**: Analyzes kurti images to extract design attributes
 2. **Generation Stage**: Uses extracted attributes to generate optimized prompts and create new kurti images
 
+![Architecture Diagram](./docs/architecture_diagram.png)
+
+*For detailed architecture flow, see the [architecture diagram](./docs/architecture_diagram.md)*
+
+
 ## Dependencies
+**Required Python version:** 3.13+
 
 Install the required Python packages:
 
 ```bash
 pip install -r requirements.txt
 ```
-
-**Required Python version:** 3.13+
-
-## Input Images Path
-
-Reference images should be placed in a directory and name of the directory should be assigned to 'INPUT_FOLDER' variable
-
 
 ## Workflow
 
@@ -63,7 +62,8 @@ OPENROUTER_API_KEY=your_openrouter_api_key_here
 
 ### 2. Prepare Input Images
 
-Place your reference images in the `input_images/` folder:
+Create an input folder inside root folder and place your reference apparel images in it.
+Assign the folder name to `INPUT_FOLDER` variable in `run_agent.py`:
 - `back.png`
 - `neck.png` 
 - `repeating_pattern.jpg`
