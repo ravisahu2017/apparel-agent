@@ -208,7 +208,10 @@ class VisionExtractorChain:
             "model": self.openrouter_model,
             "messages": [
                 {"role": "system", "content": prompt},
-                {"role": "user", "content": [{"type": "input_image", "image_url": f"data:image/png;base64,{image_content[0]}"}]}
+                {"role": "user", "content": [
+                    {"type": "text", "text": "Analyze this image and extract the requested attributes."},
+                    {"type": "input_image", "image_url": f"data:image/png;base64,{image_content[0]}"}
+                ]}
             ]
         }
 
@@ -240,6 +243,7 @@ class VisionExtractorChain:
     # STEP 3 → Save to TinyDB
     # ---------------------------------------------
     def save_to_tinydb(self, inputs):
+        print("INFO", "Saving to TinyDB...", inputs)
         record = {
             "product_id": inputs["product_id"],
             "attributes": inputs["raw"]

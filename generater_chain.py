@@ -56,13 +56,13 @@ class GeneratorChain:
 
                 Return ONLY the final prompt. Do not add explanations."""
         )
-    
-
 
     def get_context(self, inputs):
         #retrieve attributes from tinydb
         records = self.db.all()
-        context = records[0]["attributes"]["raw"]
+        context = records[0]["attributes"]
+        if("raw" in context):
+            context = context["raw"]
         
         print("---------context---------\n", context)
         return {
@@ -160,7 +160,6 @@ class GeneratorChain:
             "cleaned_length": len(final_prompt),
             "lines_removed": len(response_lines) - len(cleaned_lines)
         }
-        
 
     def chain(self):
         return (
@@ -175,11 +174,9 @@ class GeneratorChain:
         result = self.client.images.edit(
             model="gpt-image-1",
             image=img,
-            prompt=prompt,
-            size="1024x1024"
+            prompt=prompt
         )
         return result.data[0].b64_json
-        pass
     
     
     def invoke(self, inputs):
