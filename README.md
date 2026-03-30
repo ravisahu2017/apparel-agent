@@ -12,14 +12,10 @@ The system follows a **two-stage architecture**:
 Install the required Python packages:
 
 ```bash
-pip install openai langchain langchain-openai langchain-community chromadb pillow python-dotenv tinydb requests
+pip install -r requirements.txt
 ```
 
-**Required Python version:** 3.10+
-
-**Key dependencies:**
-- `python=3.13`
-- all other dependencies are listed in `requirements.txt`
+**Required Python version:** 3.13+
 
 ## Input Images Path
 
