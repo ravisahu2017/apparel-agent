@@ -7,6 +7,7 @@ from PIL import Image
 from io import BytesIO
 from generater_chain import GeneratorChain
 from extractor_chain import VisionExtractorChain
+from verifierLLM import VisionLLMExtractor
 from dotenv import load_dotenv
 
 from old_v2.agent_1 import product_id
@@ -77,12 +78,23 @@ def extract():
     return result
 
 
+def verify():
+    verifier = VisionLLMExtractor(
+        openrouter_key=os.getenv("OPENROUTER_API_KEY"),
+        openrouter_model="anthropic/claude-3-haiku", 
+    )
+    result = verifier.extract(f"output/generated_kurti.png")
+    print("------------------------\nVerifier result:\n", result)
+
+
 if __name__ == "__main__":
     print("------------------------\nExtracting attributes...\n")
-    extract()
+    #extract()
     print("-----------------------------------------\n")
     print("------------------------\nGenerating kurti...\n")
     #generate()
+    print("------------------------\nVerifying kurti...\n")
+    verify()
 
 
 

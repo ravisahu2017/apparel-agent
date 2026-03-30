@@ -1,5 +1,6 @@
 from transformers import CLIPProcessor, CLIPModel
 from PIL import Image
+import numpy as np
 import torch
 
 class CLIPEmbeddings:
@@ -34,3 +35,17 @@ class CLIPEmbeddings:
 
     def embed_documents(self, docs):
         return [self.embed_query(doc) for doc in docs]
+
+    def embed_image(self, img_path):
+        image = Image.open(img_path).convert("RGB")
+        inputs = self.processor(images=image, return_tensors="pt")
+
+        with torch.no_grad():
+            emb = self.model.get_image_features(**inputs)
+
+        return emb[0].numpy()
+
+    def similarity(self, img1, img2):
+        v1 = self.embed_image(img1)
+        v2 = self.embed_image(img2)
+        return np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))

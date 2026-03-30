@@ -195,6 +195,8 @@ class VisionExtractorChain:
         - Style category  
         - Keywords  
 
+        Return JSON only.
+
         """
 
         headers = {
@@ -206,7 +208,7 @@ class VisionExtractorChain:
             "model": self.openrouter_model,
             "messages": [
                 {"role": "system", "content": prompt},
-                {"role": "user", "content": [image_content[0]]}
+                {"role": "user", "content": [{"type": "input_image", "image_url": f"data:image/png;base64,{image_content[0]}"}]}
             ]
         }
 
