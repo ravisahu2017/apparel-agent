@@ -2,10 +2,11 @@
 
 ## Architecture Overview
 
-The system follows a **two-stage architecture**:
+The system follows a **three-stage architecture**:
 
 1. **Design Extraction Stage**: Analyzes kurti images to extract design attributes
 2. **Generation Stage**: Uses extracted attributes to generate optimized prompts and create new kurti images
+3. **Critic/Verification Stage**: Compares the generated image with the original reference to ensure accuracy, providing feedback for retries if necessary
 
 ![Architecture Diagram](./docs/architecture_diagram.png)
 
@@ -50,6 +51,13 @@ The `GeneratorChain` class:
 3. **Cleans prompts** by removing explanatory text
 4. **Generates images** using OpenAI's image API with reference images
 
+### Stage 3: Critic & Verification (Feedback Loop)
+The `CompareByVisionLLM` class acts as a critic:
+1. **Compares Images**: Uses a Vision LLM (e.g., `nvidia/nemotron-nano-12b-v2-vl`) to compare the generated output with `front.png`.
+2. **Evaluates Design**: Checks for consistency in patterns, colors, and neck design.
+3. **Generates Feedback**: If the design fails verification (`is_passed: false`), it provides specific feedback on what needs fixing.
+4. **Triggers Re-generation**: The system automatically retries generation (up to 3 attempts) using the critic's feedback to refine the prompt.
+
 ## How to Run
 
 ### 1. Set up Environment
@@ -70,10 +78,21 @@ Assign the folder name to `INPUT_FOLDER` variable in `run_agent.py`:
 - `front.png`
 - `fabric.jpg` (optional)
 
-### 3. Run the Complete Workflow
+### 3. Run the Workflow
 
+**To extract attributes:**
 ```bash
-python run_agent.py
+python run_agent.py extract
+```
+
+**To generate with critic feedback (requires UUID from extract phase):**
+```bash
+python run_agent.py generate <uuid>
+```
+
+**To compare/verify only:**
+```bash
+python run_agent.py compare <uuid>
 ```
 
 ### 4. Expected Output
@@ -101,7 +120,21 @@ The script executes the following workflow:
    Generating kurti...
    ------------------------
    [Cleaned prompt displayed]
-   Image saved to: output/{product_id}/generated_kurti.png
+   Image saved to: output/{product_id}/generated_kurti_{u}_{attempt}.png
+   ```
+
+3. **Verification Phase (Critic):**
+   ```
+   --- Verifying Generation ---
+   --- Comparer Raw Output ---
+   {
+     "is_passed": false,
+     "score": 6,
+     "issues": "Pattern scale is too large",
+     "feedback_for_regeneration": "Reduce the scale of the floral pattern to match the reference."
+   }
+   
+   ❌ FAILED: Attempt 1 did not pass.
    ```
 
 ## Data Storage
