@@ -55,15 +55,24 @@ class GeneratorChain:
                 You are an expert fashion stylist and ecommerce image prompt engineer specializing in Indian marketplaces like {market_place}.
                 Your task is to generate a highly detailed and optimized prompt for an AI image generation model.
                 You must pass the locked context to generated prompt as it is.
+                You must read the description and recreate it for image generation prompt.
 
-                Locked Context:
-                {context}
+                Generated prompt must be in following format exactly:
 
                 Kurti Description:
                 {description}
-
+                
+                Locked Design Details:
+                {context}
+                
                 Goal:
-                Create a realistic {view} image of a female model wearing the given kurti, suitable for ecommerce listing.
+                Create a realistic prompt to be passed to image-to-image llm model, whose ultimate goal is to generate an image as asked in the description with the given by user
+            
+                Example:
+                - Generate an image of a fashion model wearing exact same kurti as present in images.
+                You can refer to the locked design details to understand the kurti details.
+                Locked Design Details:
+                {context}
 
                 Return ONLY the final prompt. Do not add explanations."""
         )
@@ -72,8 +81,12 @@ class GeneratorChain:
         #retrieve attributes from tinydb
         records = self.db.all()
         context = records[0]["attributes"]
-        if("raw" in context):
-            context = context["raw"]
+        # if single element in context object, then context = context[that single key]
+        if(len(context) == 1):
+            context = context[list(context.keys())[0]]
+        
+        #convert the context into a key value pair string
+        context = "\n".join([f"{key}: {value}" for key, value in context.items()])
         
         print("---------context---------\n", context)
         return {
@@ -187,6 +200,19 @@ class GeneratorChain:
         )
         return result.data[0].b64_json
     
+
+    def generate_prompt(self, inputs):
+        result = self.chain().invoke(inputs)
+        return result
+
+   
+    def generate_image(self, prompt, reference_images, output_path):
+        base64 = self.generate_with_reference(prompt, reference_images)
+        print("---------base64 generated successfully---------\n", base64)
+        image = self.base64_to_image(base64)
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        image.save(output_path)
+        return output_path
     
     def invoke(self, inputs, reference_images, output_path):
         result = self.chain().invoke(inputs)

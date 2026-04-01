@@ -128,12 +128,19 @@ class VisionExtractorChain:
     # STEP 1 → Load image file
     # ---------------------------------------------
     def load_image(self, inputs):
-        input_folder = inputs["input_folder"]
-        image_files = self.get_image_files(input_folder)
+        # Handle multiple image paths (for Gradio UI), single path, or folder
+        if "image_paths" in inputs:
+            image_files = inputs["image_paths"]
+        elif "image_path" in inputs:
+            image_files = [inputs["image_path"]]
+        else:
+            input_folder = inputs["input_folder"]
+            image_files = self.get_image_files(input_folder)
+            image_files = sorted(image_files)
         
         # Convert images to base64
         image_content = []
-        for img_path in sorted(image_files):
+        for img_path in image_files:
             try:
                 with open(img_path, "rb") as img_file:
                     image_data = img_file.read()
@@ -151,11 +158,18 @@ class VisionExtractorChain:
                         media_type = "image/webp"
                     else:
                         media_type = "image/jpeg"
-                    
+
+                    filename = Path(img_path).name
+                    print("INFO", f"Processing image: {filename}")
+                    image_content.append({
+                        "type": "text",
+                        "text": f"Next image: {filename}"
+                    })
                     image_content.append({
                         "type": "image_url",
                         "image_url": {
                             "url": f"data:{media_type};base64,{base64_image}",
+                            "name": filename
                         },
                     })
                     print("INFO", f"Encoded image: {Path(img_path).name}")
@@ -183,7 +197,7 @@ class VisionExtractorChain:
 
 
         prompt = """
-        You are a fashion vision model. You have been given a kurti in the images. Analyze the kurti item in the images
+        You are a fashion vision model. You have been given a different images of a kurti. Analyze the kurti item in the images
         and extract the following attributes:
 
         - Type of garment: kurti
@@ -198,7 +212,7 @@ class VisionExtractorChain:
         - Style category: casual, formal, ethnic, etc.  
         - Keywords  
 
-        Return JSON only.
+        Return a JSON object with the extracted attributes.
 
         """
 
@@ -261,6 +275,9 @@ class VisionExtractorChain:
     # STEP 5 → Add summary to Chroma vectorstore
     # ---------------------------------------------
     def add_images_to_vectorstore(self, inputs):
+        if "image_path" in inputs or "image_paths" in inputs:
+            # Skip vectorstore for UI flow for now
+            return
         texts = []
         metadatas = []
         ids = []
@@ -294,7 +311,6 @@ class VisionExtractorChain:
             RunnableLambda(self.load_image)
             | RunnableLambda(self.extract_attributes)
             | RunnableLambda(self.save_to_tinydb)
-            | RunnableLambda(self.add_images_to_vectorstore)
         )
 
     # ---------------------------------------------
