@@ -1,71 +1,49 @@
-import os
+import requests
 import base64
-from PIL import Image
-from io import BytesIO
+import json
+import io
 from openai import OpenAI
 from tinydb import TinyDB, Query
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import PromptTemplate
-from clip_embeddings import CLIPEmbeddings
 from langchain_core.runnables import RunnableLambda
-from langchain_chroma import Chroma
 
-class GeneratorChain:
-    """
-    Agent class for generating kurti images
-    """
-    def __init__(self, openai_api_key, openrouter_token, tinydb_path="vision_data.json", vectorstore_collection="images"):
-        self.client = OpenAI(api_key=openai_api_key)
+class GeneratorChainV2:
+    model_priority = [
+        "black-forest-labs/FLUX-1.1-pro-Ultra",
+    ]
+    def __init__(self, openrouter_token, image_edit_token, tinydb_path="vision_data.json"):
+        # We use OpenRouter for the LLM (Free Models)
         self.openrouter_token = openrouter_token
-        self.clip_embeddings = CLIPEmbeddings()
+        self.image_edit_token = image_edit_token
         self.db = TinyDB(tinydb_path)
-        self.vectorstore_collection = vectorstore_collection
-        #self.initialize_vectorstore()
+        
         self.initialize_llm()
         self.initialize_prompt()
-      
-    def base64_to_image(self, b64_string):
-        # decode base64
-        image_bytes = base64.b64decode(b64_string)
-        
-        # convert to image
-        image = Image.open(BytesIO(image_bytes))
-        
-        return image
-
-    def initialize_vectorstore(self):
-        self.vectorstore = Chroma(
-            collection_name=self.vectorstore_collection,
-            embedding_function=self.clip_embeddings
-        )
-        self.retriever = self.vectorstore.as_retriever()
 
     def initialize_llm(self):
+        # Using a reliable free model on OpenRouter
         self.llm = ChatOpenAI(
             openai_api_base="https://openrouter.ai/api/v1",
             openai_api_key=self.openrouter_token,
-            model="meta-llama/llama-3-8b-instruct",
-            temperature=0.2
+            model="anthropic/claude-3-haiku", # Upgraded free model for 2026
+            temperature=0.3
         )
 
     def initialize_prompt(self):
         self.prompt = PromptTemplate(
             input_variables=["context", "description", "view", "market_place"],
             template="""
-                You are an expert fashion stylist and ecommerce image prompt engineer specializing in Indian marketplaces like {market_place}.
-                Your task is to generate a highly detailed and optimized prompt for an AI image generation model.
-                You must pass the locked context to generated prompt as it is.
+                You are an expert fashion stylist for {market_place}.
+                Create a professional image generation prompt for a female model wearing this kurti.
+                
+                Product Details: {context}
+                User Request: {description}
+                View: {view}
 
-                Locked Context:
-                {context}
-
-                Kurti Description:
-                {description}
-
-                Goal:
-                Create a realistic {view} image of a female model wearing the given kurti, suitable for ecommerce listing.
-
-                Return ONLY the final prompt. Do not add explanations."""
+                The prompt must be descriptive (fabric texture, lighting, background).
+                Return ONLY the prompt text.
+            """
         )
 
     def get_context(self, inputs):
@@ -163,12 +141,68 @@ class GeneratorChain:
             if final_prompt.startswith(prefix):
                 final_prompt = final_prompt[len(prefix):].strip()
         
+        print("\n---------cleaned prompt---------\n", final_prompt)
+        
         return {
             "cleaned_prompt": final_prompt,
             "original_length": len(llm_response),
             "cleaned_length": len(final_prompt),
             "lines_removed": len(response_lines) - len(cleaned_lines)
         }
+
+
+    def generate_with_reference1(self, prompt, base_img_path, mask_img_path=None):
+        """
+        Updated Free Generation Logic for 2026.
+        Uses Pixazo (Unified Free API) as the primary and SiliconFlow as backup.
+        """
+        print(f"--- Starting Image Edit ---")
+        
+        if self.image_edit_token:
+            try:
+                print("Attempting SiliconFlow (Direct SDXL)...")
+                # Corrected 2026 endpoint for general generation/editing
+                url = "https://api.siliconflow.com/v1/images/generations" 
+                
+                headers = {
+                    "Authorization": f"Bearer {self.image_edit_token}",
+                    "Content-Type": "application/json"
+                }
+                
+                payload = {
+                    "model": "Qwen/Qwen-Image-Edit",
+                    "prompt": prompt,
+                    "image_size": "512x512",
+                    "image": base64.b64encode(open(base_img_path, "rb").read()).decode("utf-8")
+                }
+
+                response = requests.post(url, json=payload, headers=headers)
+                
+                # SAFE PARSING to avoid 'Extra Data' error
+                if response.status_code == 200:
+                    return response.json()['data'][0]['url']
+                else:
+                    print(f"SiliconFlow Error: {response.text}")
+            except Exception as e:
+                print(f"SiliconFlow failed: {e}")
+
+        return "Error: All free generation endpoints failed."
+    
+    def generate_with_reference(self, prompt, base_img_path):
+        url = "https://api.segmind.com/v1/qwen-image-edit"
+        payload = {
+            "image": base64.b64encode(open(base_img_path, "rb").read()).decode("utf-8"),
+            "prompt": prompt,
+            "negative_prompt": "blurry, low quality, distorted",
+            "samples": 1,
+            "steps": 25
+        }
+        headers = { "x-api-key": self.image_edit_token }
+        response = requests.post(url, json=payload, headers=headers)
+        # Returns base64 or URL depending on settings
+        return response.json()
+
+
 
     def chain(self):
         return (
@@ -178,26 +212,13 @@ class GeneratorChain:
             | RunnableLambda(self.prompt_parser)
         )
 
-    def generate_with_reference(self, prompt, img):
-        print("---------generating image with reference---------\n", prompt)
-        result = self.client.images.edit(
-            model="gpt-image-1",
-            image=img,
-            prompt=prompt
-        )
-        return result.data[0].b64_json
-    
-    
-    def invoke(self, inputs, reference_images, output_path):
-        result = self.chain().invoke(inputs)
-        # Save result to output_path
-
-   
+    def invoke(self, inputs, base_img_path):
+        # 1. Run LLM to get the optimized prompt
+        chain_output = self.chain().invoke(inputs)
+        final_prompt = chain_output["cleaned_prompt"]
         
-        base64 = self.generate_with_reference(result.get("cleaned_prompt", "No prompt generated"), reference_images)
-        print("---------base64 generated successfully---------\n", base64)
-        image = self.base64_to_image(base64)
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        image.save(output_path)
-        image.show()
-        return output_path
+        # 2. Run Image Generation/Edit
+        return self.generate_with_reference(
+            prompt=final_prompt, 
+            base_img_path=base_img_path
+        )

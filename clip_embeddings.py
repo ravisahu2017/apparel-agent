@@ -41,9 +41,11 @@ class CLIPEmbeddings:
         inputs = self.processor(images=image, return_tensors="pt")
 
         with torch.no_grad():
-            emb = self.model.get_image_features(**inputs)
+            outputs = self.model.get_image_features(**inputs)
+            # Handle potential model output object
+            emb = outputs.pooler_output if hasattr(outputs, 'pooler_output') else outputs
 
-        return emb[0].numpy()
+        return emb.detach().cpu().numpy().flatten()
 
     def similarity(self, img1, img2):
         v1 = self.embed_image(img1)

@@ -17,6 +17,10 @@ class VisionExtractorChain:
     3. Saving structured output into TinyDB
     4. Storing summary text in Chroma Vectorstore
     """
+    model_priority = [
+        "nvidia/nemotron-nano-12b-v2-vl:free",
+        "anthropic/claude-3-haiku"
+    ]
 
     def __init__(self, openrouter_key, openrouter_model="openai/gpt-4o", tinydb_path="vision_data.json", vectorstore_collection="images"):
         self.api_key = openrouter_key
@@ -39,7 +43,6 @@ class VisionExtractorChain:
                 if Path(file).suffix.lower() in image_extensions:
                     full_path = os.path.join(input_folder, file)
                     image_files.append(full_path)
-                    print("DEBUG", f"Found image: {file} ({os.path.getsize(full_path)} bytes)")
         else:
             return {"error": f"Folder not found: {input_folder}"}
         
@@ -134,7 +137,7 @@ class VisionExtractorChain:
             try:
                 with open(img_path, "rb") as img_file:
                     image_data = img_file.read()
-                    base64_image = base64.b64encode(image_data).decode("utf-8")
+                    base64_image = base64.b64encode(image_data).decode()
                     
                     # Determine image type from extension
                     file_ext = Path(img_path).suffix.lower()
@@ -183,16 +186,16 @@ class VisionExtractorChain:
         You are a fashion vision model. You have been given a kurti in the images. Analyze the kurti item in the images
         and extract the following attributes:
 
-        - Type of garment  
+        - Type of garment: kurti
+        - Silhouette: A-line, fit, straight, etc.
         - Patterns  
         - Colors  
-        - Sleeves  
-        - Sleeve hem details
-        - Fabric type  
-        - Neck design  
+        - Sleeves(3/4th, Full, Sleeveless, Half)
+        - Top length (Crop, Midi, short Midi, Long Midi, Maxi, etc.)
+        - Neck design (Round, V-Neck, deep v, etc.)
         - Border hem details
         - Notable visual details  
-        - Style category  
+        - Style category: casual, formal, ethnic, etc.  
         - Keywords  
 
         Return JSON only.
@@ -204,51 +207,53 @@ class VisionExtractorChain:
             "Content-Type": "application/json"
         }
 
+        content_array = [
+            {"type": "text", "text": "Analyze this image and extract the requested attributes."},
+            *image_content
+        ]
+        print("INFO", "Content array length:", len(content_array))
+
         payload = {
             "model": self.openrouter_model,
             "messages": [
                 {"role": "system", "content": prompt},
-                {"role": "user", "content": [
-                    {"type": "text", "text": "Analyze this image and extract the requested attributes."},
-                    {"type": "input_image", "image_url": f"data:image/png;base64,{image_content[0]}"}
-                ]}
+                {"role": "user", "content": content_array}
             ]
         }
 
-        response = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers=headers,
-            json=payload
-        )
-
-        result = response.json()
-        print("INFO", "OpenRouter API response:", result)
+        for model_id in self.model_priority:
+            payload["model"] = model_id
+            try:
+                response = requests.post(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    headers=headers,
+                    json=payload,
+                    timeout=60
+                )
+                res_json = response.json()
+                if 'choices' in res_json:
+                    raw_response = res_json["choices"][0]["message"]["content"]
+                    
+                    # Parse the response to ensure valid JSON
+                    parsed_response = self.parse_response({"raw_response": raw_response})
+                    inputs["raw"] = parsed_response
+                    return inputs
+                else:
+                    print("WARNING", f"Model {model_id} failed: {res_json.get('error')}")
+            except Exception as e:
+                print("ERROR", f"Failed to use model {model_id}: {e}")
+                continue
         
-        if "error" in result:
-            print("ERROR", f"OpenRouter API error: {result['error']}")
-            return {"error": result['error']}
-        
-        if "choices" not in result:
-            print("ERROR", f"Unexpected response format: {result}")
-            return {"error": "Unexpected response format"}
-        
-        raw_response = result["choices"][0]["message"]["content"]
-        
-        # Parse the response to ensure valid JSON
-        parsed_response = self.parse_response({"raw_response": raw_response})
-        inputs["raw"] = parsed_response
-        return inputs
 
     # ---------------------------------------------
     # STEP 3 → Save to TinyDB
     # ---------------------------------------------
     def save_to_tinydb(self, inputs):
-        print("INFO", "Saving to TinyDB...", inputs)
         record = {
             "product_id": inputs["product_id"],
             "attributes": inputs["raw"]
         }
-
+        print("INFO", "Saving to TinyDB...", record)
         self.db.insert(record)
         return inputs
 
