@@ -34,24 +34,29 @@ class GradioOrchestrator:
                 with gr.Column():
                     input_imgs = gr.File(file_count="multiple", file_types=["image"], label="Upload Cleaned Kurti Images")
                     extract_btn = gr.Button("Extract", variant="primary")
-                    output_details = gr.Textbox(label="Extracted Attributes")
                 with gr.Column():
-                    image_gen_prompt = gr.Textbox(label="Image Generation Prompt")
-                    with gr.Row():
-                        view_input = gr.Textbox(value="front view", label="View Type (e.g., front view, back view)")
-                        regenerate_prompt_btn = gr.Button("Regenerate Prompt", variant="secondary", size="sm")
+                    output_details = gr.Textbox(label="Extracted Attributes")
 
-                    with gr.Row(): 
-                        generate_btn_front = gr.Button("Generate Front View", variant="secondary", size="md")
-                        generate_btn_back = gr.Button("Generate Back View", variant="secondary", size="md")
-                        generate_btn_side = gr.Button("Generate Side View", variant="secondary", size="md")
-                    output_gallery = gr.Image(label="Generated Result")
+
+            with gr.Row(visible=False) as prompt_action_row:
+                with gr.Column():
+                    regenerate_prompt_btn = gr.Button("Regenerate Prompt", variant="secondary", size="sm")
+
+                with gr.Column():
+                    image_gen_prompt = gr.Textbox(label="Image Generation Prompt", visible=False)
+                    view_input = gr.Textbox(value="front view", label="View Type (e.g., front view, back view)")
+                    generate_btn_front = gr.Button("Generate Front View", variant="secondary", size="md")
+                    generate_btn_back = gr.Button("Generate Back View", variant="secondary", size="md")
+                    generate_btn_side = gr.Button("Generate Side View", variant="secondary", size="md")
+            
+            with gr.Row(visible=False) as generation_row: 
+                output_gallery = gr.Image(label="Generated Result")
 
             # Connect the button to the function
             extract_btn.click(
                 fn=self.process_extraction,
                 inputs=[input_imgs],
-                outputs=[status_box, output_details, image_gen_prompt]
+                outputs=[status_box, output_details, image_gen_prompt, prompt_action_row, generation_row]
             )
 
             generate_btn_front.click(
@@ -69,7 +74,7 @@ class GradioOrchestrator:
 
     def process_extraction(self, input_images):
         if not input_images:
-            return "Please upload at least one image.", None, None
+            return "Please upload at least one image.", None, None, gr.update(visible=False), gr.update(visible=False)
         
         # input_images is a list of file paths when select_compute is "files"
         if isinstance(input_images, str):
@@ -80,7 +85,7 @@ class GradioOrchestrator:
         p_id = "gradio_upload_" + u[:8]
         
         # STEP 1: UI Feedback
-        yield gr.update(value="Step 1: Extracting Attributes from multiple images...", visible=True), None, None
+        yield gr.update(value="Step 1: Extracting Attributes from multiple images...", visible=True), None, None, gr.update(visible=False), gr.update(visible=False)
         
         # 2. RUN EXTRACTION
         self.vision_chain = VisionExtractorChain(
@@ -100,14 +105,14 @@ class GradioOrchestrator:
             formatted_attributes = json.dumps(extracted_attributes, indent=2)
             
             # STEP 2: UI Feedback (Show extracted attributes)
-            yield gr.update(value=f"Step 2: Attributes Extracted from {len(input_images)} images!"), formatted_attributes, None
+            yield gr.update(value=f"Step 2: Attributes Extracted from {len(input_images)} images!"), formatted_attributes, None, gr.update(visible=False), gr.update(visible=False)
             
         except Exception as e:
-            yield gr.update(value=f"❌ Error during extraction: {str(e)}"), None, None
+            yield gr.update(value=f"❌ Error during extraction: {str(e)}"), None, None, gr.update(visible=False), gr.update(visible=False)
             return
 
         # STEP 3: UI Feedback (Generating)
-        yield gr.update(value="Step 3: Generating Fashion Prompt..."), formatted_attributes, None
+        yield gr.update(value="Step 3: Generating Fashion Prompt..."), formatted_attributes, None, gr.update(visible=False), gr.update(visible=False)
         
         # 3. RUN GENERATOR
         try:
@@ -139,11 +144,11 @@ class GradioOrchestrator:
                 f.close()
             
             # FINAL OUTPUT
-            yield gr.update(value="✅ Done!"), formatted_attributes, cleaned_prompt
+            yield gr.update(value="✅ Done!"), formatted_attributes, gr.update(value=cleaned_prompt, visible=True), gr.update(visible=True), gr.update(visible=True)
             
             
         except Exception as e:
-            yield gr.update(value=f"❌ Error during generation: {str(e)}"), formatted_attributes, None
+            yield gr.update(value=f"❌ Error during generation: {str(e)}"), formatted_attributes, None, gr.update(visible=False), gr.update(visible=False)
 
     def process_generation(self, prompt, input_images):
         if not self.generator_chain:
