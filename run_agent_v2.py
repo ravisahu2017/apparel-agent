@@ -19,7 +19,8 @@ from dotenv import load_dotenv
 load_dotenv()
 INPUT_FOLDER = "input_images"
 product_id = "b7b45301-f29b-40b2-abd7-48bd0b108109"
-uuid4 = uuid.uuid4()
+vision_chain = None
+generator_chain = None
 
 def base64_to_image(b64_string):
     # decode base64
@@ -56,15 +57,6 @@ def generate(u, attempt=1, feedback=None):
             open(f"{INPUT_FOLDER}/neck.png","rb")
         ],
     output_path=f"output/{product_id}/generated_kurti_{u}_{attempt}.png")
-    return result
-
-
-def extract():
-    vision_chain = VisionExtractorChain(
-        openrouter_key=os.getenv("OPENROUTER_API_KEY"),
-        openrouter_model="anthropic/claude-3-haiku", 
-        tinydb_path=f"vision_data_{uuid4}.nogit.json")
-    result = vision_chain.invoke({"input_folder": INPUT_FOLDER, "product_id": product_id})
     return result
 
 
@@ -196,8 +188,19 @@ def process_extraction(input_images):
         yield gr.update(value=f"❌ Error during generation: {str(e)}"), formatted_attributes, None
 
 
-def process_generation():
+def process_generation(arg1, arg2):
     pass
+
+def process_regenerate_prompt(view):
+    gen_result = generator_chain.generate_prompt(
+            inputs={
+                "description": f"generate a {view} of the modal in the mentioned kurti",
+                "view": view,
+                "market_place": "Meesho"
+            }
+        )
+    cleaned_prompt = gen_result.get("cleaned_prompt", "no prompt generated")
+    yield gr.update(value="✅ Done!"), formatted_attributes, cleaned_prompt
 
 # --- GRADIO LAYOUT ---
 with gr.Blocks(theme=gr.themes.Soft()) as demo:
@@ -212,7 +215,13 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
             output_details = gr.Textbox(label="Extracted Attributes")
         with gr.Column():
             image_gen_prompt = gr.Textbox(label="Image Generation Prompt")
-            generate_btn = gr.Button("Generate Front View", variant="primary")
+            with gr.Row():
+                regenerate_prompt_btn = gr.Button("Regenerate Prompt", variant="secondary", size="sm")
+
+            with gr.Row(): 
+                generate_btn_front = gr.Button("Generate Front View", variant="secondary", size="md")
+                generate_btn_back = gr.Button("Generate Back View", variant="secondary", size="md")
+                generate_btn_side = gr.Button("Generate Side View", variant="secondary", size="md")
             output_gallery = gr.Image(label="Generated Result")
 
     # Connect the button to the function
@@ -222,10 +231,16 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
         outputs=[status_box, output_details, image_gen_prompt]
     )
 
-    generate_btn.click(
+    generate_btn_front.click(
         fn=process_generation,
         inputs=[image_gen_prompt, input_imgs],
         outputs=[status_box, output_gallery]
+    )
+
+    regenerate_prompt_btn.click(
+        fn=process_regenerate_prompt,
+        inputs=[gr.Textbox(value="front view")],
+        outputs=[status_box, output_details, image_gen_prompt]
     )
 
 if __name__ == "__main__":

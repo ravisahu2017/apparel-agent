@@ -44,8 +44,8 @@ class GeneratorChain:
         self.llm = ChatOpenAI(
             openai_api_base="https://openrouter.ai/api/v1",
             openai_api_key=self.openrouter_token,
-            model="meta-llama/llama-3-8b-instruct",
-            temperature=0.2
+            model="nvidia/nemotron-3-super-120b-a12b:free",
+            temperature=0.5
         )
 
     def initialize_prompt(self):
@@ -59,7 +59,7 @@ class GeneratorChain:
 
                 Generated prompt must be in following format exactly:
 
-                Kurti Description:
+
                 {description}
                 
                 Locked Design Details:
