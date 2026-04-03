@@ -3,6 +3,7 @@ from PIL import Image
 import numpy as np
 import torch
 
+
 class CLIPEmbeddings:
     def __init__(self):
         self.model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
@@ -24,13 +25,13 @@ class CLIPEmbeddings:
                 emb = self.model.get_text_features(**inputs)
 
         # Ensure we get the tensor and convert to numpy
-        if hasattr(emb, 'pooler_output'):
+        if hasattr(emb, "pooler_output"):
             # If it's a model output object, get the pooler_output
             tensor = emb.pooler_output
         else:
             # If it's already a tensor
             tensor = emb
-            
+
         return tensor.detach().cpu().numpy().flatten()
 
     def embed_documents(self, docs):
@@ -43,7 +44,9 @@ class CLIPEmbeddings:
         with torch.no_grad():
             outputs = self.model.get_image_features(**inputs)
             # Handle potential model output object
-            emb = outputs.pooler_output if hasattr(outputs, 'pooler_output') else outputs
+            emb = (
+                outputs.pooler_output if hasattr(outputs, "pooler_output") else outputs
+            )
 
         return emb.detach().cpu().numpy().flatten()
 

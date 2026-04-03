@@ -21,6 +21,7 @@ class Product(Base):
     created_at = Column(DateTime, default=datetime.utcnow())
     updated_at = Column(DateTime, default=datetime.utcnow(), onupdate=datetime.utcnow())
 
+
 @tool("create_product", description="Creates a new product")
 def create_product(
     attributes: Optional[Dict[str, Any]] = None,
@@ -29,9 +30,11 @@ def create_product(
 ) -> Product:
     return _create_product(attributes, listing, status)
 
+
 @tool("get_product", description="Fetches product details by ID")
 def get_product(product_id: uuid.UUID) -> Optional[Product]:
     return _get_product(product_id)
+
 
 @tool("update_product", description="Updates product details")
 def update_product(
@@ -42,9 +45,11 @@ def update_product(
 ) -> Optional[Product]:
     return _update_product(product_id, attributes, listing, status)
 
+
 # ==============================
 # CRUD Operations
 # ==============================
+
 
 def _create_product(
     attributes: Optional[Dict[str, Any]] = None,
@@ -68,6 +73,7 @@ def _create_product(
     finally:
         session.close()
 
+
 def _get_product(product_id: uuid.UUID) -> Optional[Product]:
     """Internal function for getting product (can be called directly)"""
     session = SessionLocal()
@@ -76,6 +82,7 @@ def _get_product(product_id: uuid.UUID) -> Optional[Product]:
     finally:
         session.close()
 
+
 def _update_product(
     product_id: uuid.UUID,
     attributes: Optional[Dict[str, Any]] = None,
@@ -83,7 +90,9 @@ def _update_product(
     status: Optional[str] = None,
 ) -> Optional[Product]:
     """Internal function for updating product (can be called directly)"""
-    print(f"Updating product {product_id} with attributes: {attributes}, listing: {listing}, status: {status}")
+    print(
+        f"Updating product {product_id} with attributes: {attributes}, listing: {listing}, status: {status}"
+    )
     session = SessionLocal()
     try:
         product = session.query(Product).filter(Product.id == product_id).first()
@@ -110,6 +119,7 @@ def _update_product(
         raise e
     finally:
         session.close()
+
 
 def _delete_product(product_id: uuid.UUID) -> bool:
     session = SessionLocal()

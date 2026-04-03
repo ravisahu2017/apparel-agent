@@ -1,5 +1,5 @@
 def read_file(filename):
-    with open(filename, 'r') as f:
+    with open(filename, "r") as f:
         lines = f.readlines()  # Returns list of lines with \n
     return lines
 
