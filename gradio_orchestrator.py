@@ -19,8 +19,11 @@ from dotenv import load_dotenv
 
 class GradioOrchestrator:
     def __init__(self):
+        self.session_id = str(uuid.uuid4())
         self.vision_chain = None
         self.generator_chain = None
+        self.comparer = CompareByVisionLLM(os.getenv("OPENROUTER_API_KEY"))
+        self.generated_images = []
         self.demo = self.create_gradio_interface()
 
     def create_gradio_interface(self):
@@ -43,30 +46,30 @@ class GradioOrchestrator:
 
             with gr.Row(visible=False) as prompt_action_row:
                 with gr.Column():
+                    view_input = gr.Dropdown(
+                        choices=["front view", "back view", "side view", "close-up view"],
+                        value="front view",
+                        label="Select View Type",
+                        allow_custom_value=True
+                    )
                     regenerate_prompt_btn = gr.Button(
-                        "Regenerate Prompt", variant="secondary", size="sm"
+                        "Regenerate Prompt for View", variant="secondary", size="sm"
+                    )
+                    generate_btn = gr.Button(
+                        "Generate Image", variant="primary", size="md"
+                    )
+                    verify_btn = gr.Button(
+                        "Verify & Refine", variant="secondary", size="md"
                     )
 
                 with gr.Column():
                     image_gen_prompt = gr.Textbox(
                         label="Image Generation Prompt", visible=False
                     )
-                    view_input = gr.Textbox(
-                        value="front view",
-                        label="View Type (e.g., front view, back view)",
-                    )
-                    generate_btn_front = gr.Button(
-                        "Generate Front View", variant="secondary", size="md"
-                    )
-                    generate_btn_back = gr.Button(
-                        "Generate Back View", variant="secondary", size="md"
-                    )
-                    generate_btn_side = gr.Button(
-                        "Generate Side View", variant="secondary", size="md"
-                    )
+                    
 
             with gr.Row(visible=False) as generation_row:
-                output_gallery = gr.Image(label="Generated Result")
+                output_gallery = gr.Gallery(label="Generated Results", columns=3, rows=1, height="auto")
 
             # Connect the button to the function
             extract_btn.click(
@@ -81,10 +84,16 @@ class GradioOrchestrator:
                 ],
             )
 
-            generate_btn_front.click(
+            generate_btn.click(
                 fn=self.process_generation,
                 inputs=[image_gen_prompt, input_imgs],
                 outputs=[status_box, output_gallery],
+            )
+
+            verify_btn.click(
+                fn=self.process_verification,
+                inputs=[input_imgs, output_gallery, view_input],
+                outputs=[status_box, output_details, image_gen_prompt],
             )
 
             regenerate_prompt_btn.click(
@@ -198,19 +207,18 @@ class GradioOrchestrator:
 
     def process_generation(self, prompt, input_images):
         if not self.generator_chain:
-            yield gr.update(value="❌ Please run extraction first"), None
+            yield gr.update(value="❌ Please run extraction first"), self.generated_images
             return
 
         if not prompt or not input_images:
-            yield gr.update(value="❌ Prompt and Images are required"), None
+            yield gr.update(value="❌ Prompt and Images are required"), self.generated_images
             return
 
-        yield gr.update(value="🎨 Generating image..."), None
+        yield gr.update(value="🎨 Generating image..."), gr.skip()
 
         try:
-            u = str(uuid.uuid4())
-            output_filename = f"output/generated_{u}.png"
-            os.makedirs("output", exist_ok=True)
+            output_filename = f"output/{self.session_id}/generated_{str(uuid.uuid4())}.png"
+            os.makedirs(os.path.dirname(output_filename), exist_ok=True)
 
             # Open reference images
             ref_files = [open(img, "rb") for img in input_images[:2]]
@@ -221,13 +229,14 @@ class GradioOrchestrator:
                     reference_images=ref_files,
                     output_path=output_filename,
                 )
-                yield gr.update(value="✅ Image Generated!"), output_filename
+                self.generated_images.append(output_filename)
+                yield gr.update(value="✅ Image Generated!"), self.generated_images
             finally:
                 for f in ref_files:
                     f.close()
 
         except Exception as e:
-            yield gr.update(value=f"❌ Error during generation: {str(e)}"), None
+            yield gr.update(value=f"❌ Error during generation: {str(e)}"), self.generated_images
 
     def process_regenerate_prompt(self, view):
         if not self.generator_chain:
@@ -250,6 +259,60 @@ class GradioOrchestrator:
             yield gr.update(value="✅ Prompt Regenerated!"), gr.skip(), cleaned_prompt
         except Exception as e:
             yield gr.update(value=f"❌ Error: {str(e)}"), gr.skip(), gr.skip()
+
+    def process_verification(self, input_images, gallery_data, view):
+        if not self.generator_chain or not gallery_data:
+            yield gr.update(value="❌ Run extraction and generation first"), gr.skip(), gr.skip()
+            return
+
+        # Use the most recent image from the gallery for verification
+        generated_image_path = gallery_data[-1] if isinstance(gallery_data, list) else gallery_data
+        # If it's a dict (Gradio gallery output), handle it
+        if isinstance(generated_image_path, dict):
+            generated_image_path = generated_image_path['name']
+
+        yield gr.update(value="🔍 Verifying design consistency..."), gr.skip(), gr.skip()
+
+        try:
+            # We use the first image as the original reference for comparison
+            original_image_path = input_images[0]
+            
+            raw_response = self.comparer.compare(original_image_path, generated_image_path)
+            
+            # Try to parse JSON from the response
+            try:
+                import re
+                json_match = re.search(r"\{.*\}", raw_response, re.DOTALL)
+                if json_match:
+                    verification_data = json.loads(json_match.group())
+                else:
+                    verification_data = {"is_passed": False, "feedback_for_regeneration": raw_response}
+            except:
+                verification_data = {"is_passed": False, "feedback_for_regeneration": raw_response}
+
+            is_passed = verification_data.get("is_passed", False)
+            feedback = verification_data.get("feedback_for_regeneration", "No specific feedback")
+            
+            if is_passed:
+                yield gr.update(value="✅ Verification Passed! Design matches."), gr.skip(), gr.skip()
+            else:
+                yield gr.update(value="⚠️ Verification Failed. Refining prompt..."), gr.skip(), gr.skip()
+                
+                # Use the feedback to regenerate the prompt
+                gen_result = self.generator_chain.generate_prompt(
+                    inputs={
+                        "description": f"generate a {view} of the modal in the mentioned kurti",
+                        "view": view,
+                        "market_place": "Meesho",
+                        "feedback": feedback
+                    }
+                )
+                cleaned_prompt = gen_result.get("cleaned_prompt", "no prompt generated")
+                
+                yield gr.update(value="✅ Prompt Refined based on feedback! Click Generate again."), feedback, cleaned_prompt
+
+        except Exception as e:
+            yield gr.update(value=f"❌ Error during verification: {str(e)}"), gr.skip(), gr.skip()
 
     def run(self):
         self.demo.launch(
