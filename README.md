@@ -1,84 +1,59 @@
 # Apparel Agent - AI-Powered Apparel Design Extraction & Generation
 
+An intelligent agent that extracts design attributes from apparel images (specifically Kurtis) and generates high-quality, marketplace-ready fashion images using a multi-stage AI pipeline.
+
+## 🚀 Key Features
+- **Multi-Image Design Extraction**: Uses Claude 3 Haiku/GPT-4o to analyze multiple reference images.
+- **AI-Powered Prompt Engineering**: Generates optimized prompts for fashion synthesis.
+- **Reference-Guided Generation**: Uses OpenAI's image editing capabilities to maintain design integrity.
+- **Interactive Web UI**: Built with Gradio for an easy-to-use extraction and generation workflow.
+- **Feedback Loop**: Integrated critic/verification stage to ensure design accuracy.
+
 ## Architecture Overview
 
 The system follows a **three-stage architecture**:
 
-1. **Design Extraction Stage**: Analyzes kurti images to extract design attributes
-2. **Generation Stage**: Uses extracted attributes to generate optimized prompts and create new kurti images
-3. **Critic/Verification Stage**: Compares the generated image with the original reference to ensure accuracy, providing feedback for retries if necessary
+1. **Design Extraction Stage**: Analyzes kurti images to extract design attributes (patterns, colors, neck design, etc.)
+2. **Generation Stage**: Uses extracted attributes to generate optimized prompts and create new kurti images.
+3. **Critic/Verification Stage**: Compares the generated image with the original reference to ensure accuracy.
 
 ![Architecture Diagram](./docs/architecture_diagram.png)
 
-*For detailed architecture flow, see the [architecture diagram](./docs/architecture_diagram.md)*
+## 🛠️ Installation
 
-
-## Dependencies
 **Required Python version:** 3.13+
 
-Install the required Python packages:
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/ravisahu2017/apparel-agent.git
+   cd apparel-agent
+   ```
 
+2. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. **Set up Environment:**
+   Create a `.env` file in the project root:
+   ```env
+   OPENAI_API_KEY=your_openai_api_key_here
+   OPENROUTER_API_KEY=your_openrouter_api_key_here
+   ```
+
+## 🚀 How to Run
+
+### 1. Web Interface (Recommended)
+Launch the interactive Gradio UI to process images through a browser:
 ```bash
-pip install -r requirements.txt
+python run_orchestrator.py
 ```
+- **Upload**: Drop your kurti images (front, back, pattern, etc.).
+- **Extract**: Click "Extract" to analyze design details.
+- **Generate**: Choose a view (Front, Back, Side) to generate new fashion images.
 
-## Workflow
-
-### Stage 1: Design Extraction
-The `VisionExtractorChain` class:
-1. **Loads images** from `INPUT_FOLDER` directory
-2. **Extracts attributes** using vision models (Claude 3 Haiku, GPT-4o)
-3. **Stores results** in TinyDB (`vision_data.json`)
-4. **Indexes summaries** in Chroma vectorstore for retrieval
-
-**Extracted attributes include:**
-- Type of garment
-- Patterns
-- Colors
-- Sleeves
-- Sleeve hem details
-- Fabric type
-- Neck design
-- Border hem details
-- Notable visual details
-- Style category
-- Keywords
-
-### Stage 2: Image Generation
-The `GeneratorChain` class:
-1. **Retrieves context** from TinyDB (extracted attributes)
-2. **Generates optimized prompts** using LLM with marketplace-specific templates
-3. **Cleans prompts** by removing explanatory text
-4. **Generates images** using OpenAI's image API with reference images
-
-### Stage 3: Critic & Verification (Feedback Loop)
-The `CompareByVisionLLM` class acts as a critic:
-1. **Compares Images**: Uses a Vision LLM (e.g., `nvidia/nemotron-nano-12b-v2-vl`) to compare the generated output with `front.png`.
-2. **Evaluates Design**: Checks for consistency in patterns, colors, and neck design.
-3. **Generates Feedback**: If the design fails verification (`is_passed: false`), it provides specific feedback on what needs fixing.
-4. **Triggers Re-generation**: The system automatically retries generation (up to 3 attempts) using the critic's feedback to refine the prompt.
-
-## How to Run
-
-### 1. Set up Environment
-
-Create a `.env` file in the project root:
-```env
-OPENAI_API_KEY=your_openai_api_key_here
-OPENROUTER_API_KEY=your_openrouter_api_key_here
-```
-
-### 2. Prepare Input Images
-
-Create an input folder inside root folder and place your reference apparel images in it.
-Assign the folder name to `INPUT_FOLDER` variable in `run_agent.py`:
-- `back.png`
-- `neck.png` 
-- `repeating_pattern.jpg`
-- `front.png`
-- `fabric.jpg` (optional)
-
-### 3. Run the Workflow
+### 2. CLI Mode
+For automated processing:
 
 **To extract attributes:**
 ```bash
@@ -90,91 +65,23 @@ python run_agent.py extract
 python run_agent.py generate <uuid>
 ```
 
-**To compare/verify only:**
-```bash
-python run_agent.py compare <uuid>
-```
+## 📂 Project Structure
+- `run_orchestrator.py`: Entry point for the Gradio Web UI.
+- `gradio_orchestrator.py`: Logic for the interactive web interface.
+- `extractor_chain.py`: Vision-based attribute extraction logic.
+- `generater_chain.py`: Prompt engineering and image generation logic.
+- `tools/`: Utility modules for S3, database, and image processing.
+- `output/`: Directory where generated images are saved.
 
-### 4. Expected Output
-
-The script executes the following workflow:
-
-1. **Extract Phase:**
-   ```
-   ------------------------
-   Extracting attributes...
-   ------------------------
-   Attributes:
-   {
-     "type": "kurti",
-     "patterns": "floral",
-     "colors": ["red", "white"],
-     ...
-   }
-   ------------------------
-   ```
-
-2. **Generation Phase:**
-   ```
-   ------------------------
-   Generating kurti...
-   ------------------------
-   [Cleaned prompt displayed]
-   Image saved to: output/{product_id}/generated_kurti_{u}_{attempt}.png
-   ```
-
-3. **Verification Phase (Critic):**
-   ```
-   --- Verifying Generation ---
-   --- Comparer Raw Output ---
-   {
-     "is_passed": false,
-     "score": 6,
-     "issues": "Pattern scale is too large",
-     "feedback_for_regeneration": "Reduce the scale of the floral pattern to match the reference."
-   }
-   
-   ❌ FAILED: Attempt 1 did not pass.
-   ```
-
-## Data Storage
-
-- **TinyDB**: `vision_data.json` - Stores extracted design attributes
-- **Chroma Vectorstore**: Indexes design summaries for semantic search
-- **Output Images**: `output/{product_id}/` directory
-
-## Customization
+## ⚙️ Customization
 
 ### Modify Extraction
-Change vision model in `extract()` function:
-```python
-vision_chain = VisionExtractorChain(
-    openrouter_key=os.getenv("OPENROUTER_API_KEY"),
-    openrouter_model="anthropic/claude-3-haiku",  # or "openai/gpt-4o"
-    tinydb_path="vision_data.json"
-)
-```
+Change vision models in `gradio_orchestrator.py` or `run_agent.py`:
+- `anthropic/claude-3-haiku` (Default)
+- `openai/gpt-4o`
 
-### Modify Generation
-Change parameters in `generate()` function:
-```python
-result = generator_chain.invoke({
-    "description": "generate a front pose of the modal in the mentioned kurti",
-    "view": "front view",
-    "market_place": "Meesho"  # or "Amazon", "Flipkart", etc.
-})
-```
+### Marketplace Templates
+The `GeneratorChain` in `generater_chain.py` supports multiple marketplace styles (Meesho, Amazon, Flipkart).
 
-### Change Input Folder
-Update the `INPUT_FOLDER` variable:
-```python
-INPUT_FOLDER = "your_custom_folder"
-```
-
-## Troubleshooting
-
-- **Missing images:** Ensure all required files exist in `INPUT_FOLDER`
-- **API errors:** Check your API keys in `.env`
-- **Pattern issues:** Verify `repeating_pattern.jpg` is clear and high-quality
-- **Vision model errors:** Try different models (`claude-3-haiku`, `gpt-4o`)
-- **JSON parsing errors:** Check vision model response format in logs
+## 🤝 Contributing
+Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on how to help improve this project.
