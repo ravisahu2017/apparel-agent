@@ -221,7 +221,7 @@ class GradioOrchestrator:
             os.makedirs(os.path.dirname(output_filename), exist_ok=True)
 
             # Open reference images
-            ref_files = [open(img, "rb") for img in input_images[:2]]
+            ref_files = [open(img, "rb") for img in input_images]
 
             try:
                 self.generator_chain.generate_image(

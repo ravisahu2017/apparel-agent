@@ -29,7 +29,7 @@ class GeneratorChain:
     ):
         self.client = OpenAI(api_key=openai_api_key)
         self.openrouter_token = openrouter_token
-        self.image_edit_token = image_edit_token or os.getenv("SEGMIND_API_KEY")
+        self.image_edit_token = image_edit_token or os.getenv("SILICONFLOW_API_KEY")
         self.clip_embeddings = CLIPEmbeddings()
         self.db = TinyDB(tinydb_path)
         self.vectorstore_collection = vectorstore_collection
@@ -217,9 +217,9 @@ class GeneratorChain:
         result = self.client.images.edit(model="gpt-image-1", image=img, prompt=prompt)
         return result.data[0].b64_json
 
-    def generate_with_segmind(self, prompt, img_list):
-        print("---------generating image with segmind---------\n", prompt)
-        url = "https://api.segmind.com/v1/qwen-image-edit"
+    def generate_with_siliconflow(self, prompt, img_list):
+        print("---------generating image with siliconflow---------\n", len(img_list), prompt)
+        url = "https://api.siliconflow.com/v1/images/generations"
         
         # img_list is expected to be a list of file-like objects from Gradio
         # We need the path or the content. Since Gradio gives file objects, we read them.
@@ -235,32 +235,37 @@ class GeneratorChain:
             print(f"Error encoding image for Segmind: {e}")
             return None
 
-        payload = {
-            "image": base64_img,
-            "prompt": prompt,
-            "negative_prompt": "blurry, low quality, distorted",
-            "samples": 1,
-            "steps": 25,
+        print("---------base64 image length---------\n", len(base64_img))
+        headers = {
+            "Authorization": f"Bearer {self.image_edit_token}",
+            "Content-Type": "application/json",
         }
-        headers = {"x-api-key": self.image_edit_token}
-        
+
+        payload = {
+            "prompt": prompt,
+            "model": "black-forest-labs/FLUX.2-flex",
+            "image_size": "512x512",
+            "images": [base64_img],
+        }
+
         try:
             response = requests.post(url, json=payload, headers=headers)
-            response.raise_for_status()
-            res_json = response.json()
-            print("Segmind response:", res_json)
-            
-            # Segmind usually returns a URL or base64 in a specific field
-            # Assuming it returns {"image": "https://..."} or similar
-            img_url = res_json.get("image") or res_json.get("url")
+           
+            print("SiliconFlow response:", response)
+            img_url = None
+            # SAFE PARSING to avoid 'Extra Data' error
+            if response.status_code == 200:
+                img_url = response.json()["data"][0]["url"]
+            else:
+                print(f"SiliconFlow Error: {response.text}")
             
             if not img_url:
-                print(f"Segmind response missing image URL: {res_json}")
+                print(f"SiliconFlow response missing image URL: {img_url}")
                 return None
 
             # Download the image to a temp location
             temp_dir = tempfile.gettempdir()
-            temp_path = os.path.join(temp_dir, f"segmind_{uuid.uuid4()}.png")
+            temp_path = os.path.join(temp_dir, f"siliconflow_{uuid.uuid4()}.png")
             
             print(f"Downloading generated image from: {img_url}")
             img_data = requests.get(img_url).content
@@ -288,7 +293,7 @@ class GeneratorChain:
         return result
 
     def generate_image(self, prompt, reference_images, output_path):
-        base64 = self.generate_with_segmind(prompt, reference_images)
+        base64 = self.generate_with_siliconflow(prompt, reference_images)
         print("---------base64 generated successfully---------\n", base64)
         image = self.base64_to_image(base64)
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
