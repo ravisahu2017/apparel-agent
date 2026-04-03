@@ -1,5 +1,8 @@
 import os
 import base64
+import requests
+import uuid
+import tempfile
 from PIL import Image
 from io import BytesIO
 from openai import OpenAI
@@ -20,11 +23,13 @@ class GeneratorChain:
         self,
         openai_api_key,
         openrouter_token,
+        image_edit_token=None,
         tinydb_path="vision_data.json",
         vectorstore_collection="images",
     ):
         self.client = OpenAI(api_key=openai_api_key)
         self.openrouter_token = openrouter_token
+        self.image_edit_token = image_edit_token or os.getenv("SILICONFLOW_API_KEY")
         self.clip_embeddings = CLIPEmbeddings()
         self.db = TinyDB(tinydb_path)
         self.vectorstore_collection = vectorstore_collection
@@ -58,31 +63,34 @@ class GeneratorChain:
 
     def initialize_prompt(self):
         self.prompt = PromptTemplate(
-            input_variables=["context", "description", "view", "market_place"],
+            input_variables=["context", "description", "view", "market_place", "feedback"],
             template="""
-                You are an expert fashion stylist and ecommerce image prompt engineer specializing in Indian marketplaces like {market_place}.
-                Your task is to generate a highly detailed and optimized prompt for an AI image generation model.
-                You must pass the locked context to generated prompt as it is.
-                You must read the description and recreate it for image generation prompt.
+                You are an expert AI Image Synthesis Engineer for {market_place}.
+                Your goal is to create a 'Reference-Guided' prompt. 
 
-                Generated prompt must be in following format exactly:
+                ### STEP 1: RE-ACT ANALYSIS
+                - Thought: I must identify the core garment from the context and map it to the user's requested {view}.
+                - Action: Create a prompt that anchors the AI to the provided reference image.
 
+                ### FEEDBACK FROM PREVIOUS ATTEMPT:
+                {feedback}
 
-                {description}
+                ### STEP 2: GENERATION PROMPT (Return this only)
+                [Primary Reference]: Use the attached source image as the structural foundation.
                 
-                Locked Design Details:
+                [Actionable Scene]: A professional female fashion model in a {view} pose, high-end {market_place} ecommerce catalog style.
+                
+                [Garment Integrity Contract]: 
+                The model is wearing the EXACT Kurti from the reference image. 
+                Specifications to enforce:
                 {context}
                 
-                Goal:
-                Create a realistic prompt to be passed to image-to-image llm model, whose ultimate goal is to generate an image as asked in the description with the given by user
-            
-                Example:
-                - Generate an image of a fashion model wearing exact same kurti as present in images.
-                You can refer to the locked design details to understand the kurti details.
-                Locked Design Details:
-                {context}
+                [Technical Execution]: 
+                Photorealistic, studio lighting, clean white background, 8k resolution. Focus on the high-quality fabric texture of the {view} view. Ensure the embroidery edges and pineapple motifs are sharp and consistent with the reference.
 
-                Return ONLY the final prompt. Do not add explanations.""",
+                [Image-to-Image Logic]: 
+                Transfer the garment from the reference image onto the model. Maintain the silhouette and fabric drape exactly as shown in the source. {description}.
+            """
         )
 
     def get_context(self, inputs):
@@ -96,12 +104,15 @@ class GeneratorChain:
         # convert the context into a key value pair string
         context = "\n".join([f"{key}: {value}" for key, value in context.items()])
 
+        feedback = inputs.get("feedback", "No previous feedback. This is the first attempt.")
+
         print("---------context---------\n", context)
         return {
             "context": context,
             "description": inputs["description"],
             "view": inputs["view"],
             "market_place": inputs["market_place"],
+            "feedback": feedback,
         }
 
     def prompt_parser(self, prompt):
@@ -206,12 +217,84 @@ class GeneratorChain:
         result = self.client.images.edit(model="gpt-image-1", image=img, prompt=prompt)
         return result.data[0].b64_json
 
+    def generate_with_siliconflow(self, prompt, img_list):
+        print("---------generating image with siliconflow---------\n", len(img_list), prompt)
+        url = "https://api.siliconflow.com/v1/images/generations"
+        
+        # img_list is expected to be a list of file-like objects from Gradio
+        # We need the path or the content. Since Gradio gives file objects, we read them.
+        # But wait, the user's snippet used open(base_img_path). 
+        # In GradioOrchestrator, ref_files is a list of open file handles.
+        base64_imgs = []
+        for img in img_list:
+            try:
+                # Get the first image content from the list of file handles
+                img.seek(0)
+                img_content = img.read()
+                base64_img = base64.b64encode(img_content).decode("utf-8")
+                base64_imgs.append(base64_img)
+            except Exception as e:
+                print(f"Error encoding image: {e}")
+
+        print("---------base64 image length---------\n", len(base64_imgs))
+        headers = {
+            "Authorization": f"Bearer {self.image_edit_token}",
+            "Content-Type": "application/json",
+        }
+
+        payload = {
+            "prompt": prompt,
+            "model": "black-forest-labs/FLUX.2-flex",
+            "image_size": "512x512",
+            "images": base64_imgs,
+        }
+
+        try:
+            response = requests.post(url, json=payload, headers=headers)
+           
+            print("SiliconFlow response:", response)
+            img_url = None
+            # SAFE PARSING to avoid 'Extra Data' error
+            if response.status_code == 200:
+                img_url = response.json()["data"][0]["url"]
+            else:
+                print(f"SiliconFlow Error: {response.text}")
+            
+            if not img_url:
+                print(f"SiliconFlow response missing image URL: {img_url}")
+                return None
+
+            # Download the image to a temp location
+            temp_dir = tempfile.gettempdir()
+            temp_path = os.path.join(temp_dir, f"siliconflow_{uuid.uuid4()}.png")
+            
+            print(f"Downloading generated image from: {img_url}")
+            img_data = requests.get(img_url).content
+            
+            with open(temp_path, "wb") as f:
+                f.write(img_data)
+            
+            # Convert to base64
+            with open(temp_path, "rb") as f:
+                final_b64 = base64.b64encode(f.read()).decode("utf-8")
+            
+            # Cleanup
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+                print(f"Temporary file {temp_path} deleted.")
+                
+            return final_b64
+
+        except Exception as e:
+            print(f"Error calling Segmind API: {e}")
+            return None
+
     def generate_prompt(self, inputs):
         result = self.chain().invoke(inputs)
         return result
 
     def generate_image(self, prompt, reference_images, output_path):
-        base64 = self.generate_with_reference(prompt, reference_images)
+        base64 = self.generate_with_siliconflow(prompt, reference_images)
         print("---------base64 generated successfully---------\n", base64)
         image = self.base64_to_image(base64)
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
