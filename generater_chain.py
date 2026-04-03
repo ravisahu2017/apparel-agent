@@ -225,17 +225,18 @@ class GeneratorChain:
         # We need the path or the content. Since Gradio gives file objects, we read them.
         # But wait, the user's snippet used open(base_img_path). 
         # In GradioOrchestrator, ref_files is a list of open file handles.
-        
-        try:
-            # Get the first image content from the list of file handles
-            img_list[0].seek(0)
-            img_content = img_list[0].read()
-            base64_img = base64.b64encode(img_content).decode("utf-8")
-        except Exception as e:
-            print(f"Error encoding image for Segmind: {e}")
-            return None
+        base64_imgs = []
+        for img in img_list:
+            try:
+                # Get the first image content from the list of file handles
+                img.seek(0)
+                img_content = img.read()
+                base64_img = base64.b64encode(img_content).decode("utf-8")
+                base64_imgs.append(base64_img)
+            except Exception as e:
+                print(f"Error encoding image: {e}")
 
-        print("---------base64 image length---------\n", len(base64_img))
+        print("---------base64 image length---------\n", len(base64_imgs))
         headers = {
             "Authorization": f"Bearer {self.image_edit_token}",
             "Content-Type": "application/json",
@@ -245,7 +246,7 @@ class GeneratorChain:
             "prompt": prompt,
             "model": "black-forest-labs/FLUX.2-flex",
             "image_size": "512x512",
-            "images": [base64_img],
+            "images": base64_imgs,
         }
 
         try:
