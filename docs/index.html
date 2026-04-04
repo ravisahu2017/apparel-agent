@@ -63,6 +63,43 @@
         </div>
     </section>
 
+    <section id="gallery" class="py-20 px-6 max-w-6xl mx-auto">
+        <h2 class="text-3xl font-bold mb-4 text-center">Featured Case Study: Pineapple Motif Kurti</h2>
+        <p class="text-center text-slate-400 mb-12 italic">Demonstrating the full Extraction → Generation → Verification loop.</p>
+        
+        <div class="bg-slate-800 p-8 rounded-3xl border border-slate-700 shadow-2xl">
+            <div class="grid md:grid-cols-3 gap-6 items-start">
+                
+                <div class="space-y-4">
+                    <span class="bg-indigo-900/50 text-indigo-400 text-xs font-bold px-3 py-1 rounded-full uppercase">Step 1: Input</span>
+                    <img src="front.png" alt="Raw Input" class="rounded-xl border border-slate-700 w-full">
+                    <p class="text-sm text-slate-500 text-center">Raw Cleaned Apparel Asset</p>
+                </div>
+
+                <div class="space-y-4">
+                    <span class="bg-purple-900/50 text-purple-400 text-xs font-bold px-3 py-1 rounded-full uppercase">Step 2: Extraction</span>
+                    <div class="bg-slate-900 p-6 rounded-xl border border-slate-700 font-mono text-xs text-green-400 h-64 overflow-hidden">
+                        <p class="mb-2">// Extraction Agent Output</p>
+                        <p>{ "silhouette": "Midi",</p>
+                        <p>  "neck": "V-neck w/ curly edges",</p>
+                        <p>  "pattern": "Pineapple motifs",</p>
+                        <p>  "sleeve": "3/4 length",</p>
+                        <p>  "category": "Ethnic/Casual" }</p>
+                        <p class="mt-4 text-slate-600">// Design Contract Locked.</p>
+                    </div>
+                    <p class="text-sm text-slate-500 text-center">LLM-Generated Metadata</p>
+                </div>
+
+                <div class="space-y-4">
+                    <span class="bg-pink-900/50 text-pink-400 text-xs font-bold px-3 py-1 rounded-full uppercase">Step 3: Result</span>
+                    <img src="generated_front.png" alt="AI Generated Output" class="rounded-xl border border-slate-700 w-full shadow-indigo-500/20 shadow-lg">
+                    <p class="text-sm text-slate-500 text-center">Final Verified Output</p>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
     <section class="py-20 max-w-4xl mx-auto px-6 text-center">
         <h2 class="text-2xl font-semibold mb-6 italic text-slate-300">"A foolish consistency is the hobgoblin of little minds."</h2>
         <p class="text-lg text-slate-400">
