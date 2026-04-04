@@ -11,6 +11,7 @@ from langchain_openai import ChatOpenAI
 from langchain_core.prompts import PromptTemplate
 from clip_embeddings import CLIPEmbeddings
 from langchain_core.runnables import RunnableLambda
+from factory import ModelFactory
 from langchain_chroma import Chroma
 
 
@@ -220,6 +221,10 @@ class GeneratorChain:
     def generate_with_siliconflow(self, prompt, img_list):
         print("---------generating image with siliconflow---------\n", len(img_list), prompt)
         url = "https://api.siliconflow.com/v1/images/generations"
+
+
+        
+
         
         # img_list is expected to be a list of file-like objects from Gradio
         # We need the path or the content. Since Gradio gives file objects, we read them.
@@ -236,58 +241,32 @@ class GeneratorChain:
             except Exception as e:
                 print(f"Error encoding image: {e}")
 
-        print("---------base64 image length---------\n", len(base64_imgs))
-        headers = {
-            "Authorization": f"Bearer {self.image_edit_token}",
-            "Content-Type": "application/json",
-        }
-
-        payload = {
-            "prompt": prompt,
-            "model": "black-forest-labs/FLUX.2-flex",
-            "image_size": "512x512",
-            "images": base64_imgs,
-        }
-
-        try:
-            response = requests.post(url, json=payload, headers=headers)
-           
-            print("SiliconFlow response:", response)
-            img_url = None
-            # SAFE PARSING to avoid 'Extra Data' error
-            if response.status_code == 200:
-                img_url = response.json()["data"][0]["url"]
-            else:
-                print(f"SiliconFlow Error: {response.text}")
-            
-            if not img_url:
-                print(f"SiliconFlow response missing image URL: {img_url}")
-                return None
-
-            # Download the image to a temp location
-            temp_dir = tempfile.gettempdir()
-            temp_path = os.path.join(temp_dir, f"siliconflow_{uuid.uuid4()}.png")
-            
-            print(f"Downloading generated image from: {img_url}")
-            img_data = requests.get(img_url).content
-            
-            with open(temp_path, "wb") as f:
-                f.write(img_data)
-            
-            # Convert to base64
-            with open(temp_path, "rb") as f:
-                final_b64 = base64.b64encode(f.read()).decode("utf-8")
-            
-            # Cleanup
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
-                print(f"Temporary file {temp_path} deleted.")
-                
-            return final_b64
-
-        except Exception as e:
-            print(f"Error calling Segmind API: {e}")
+        img_url = ModelFactory.call_image_edit("image_edit", prompt, base64_imgs)
+        
+        if not img_url:
+            print(f"SiliconFlow response missing image URL: {img_url}")
             return None
+
+        # Download the image to a temp location
+        temp_dir = tempfile.gettempdir()
+        temp_path = os.path.join(temp_dir, f"siliconflow_{uuid.uuid4()}.png")
+        
+        print(f"Downloading generated image from: {img_url}")
+        img_data = requests.get(img_url).content
+        
+        with open(temp_path, "wb") as f:
+            f.write(img_data)
+        
+        # Convert to base64
+        with open(temp_path, "rb") as f:
+            final_b64 = base64.b64encode(f.read()).decode("utf-8")
+        
+        # Cleanup
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+            print(f"Temporary file {temp_path} deleted.")
+            
+        return final_b64
 
     def generate_prompt(self, inputs):
         result = self.chain().invoke(inputs)

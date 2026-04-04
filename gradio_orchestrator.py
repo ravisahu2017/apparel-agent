@@ -127,11 +127,7 @@ class GradioOrchestrator:
         ), None, None, gr.update(visible=False), gr.update(visible=False)
 
         # 2. RUN EXTRACTION
-        self.vision_chain = VisionExtractorChain(
-            openrouter_key=os.getenv("OPENROUTER_API_KEY"),
-            openrouter_model="anthropic/claude-3-haiku",
-            tinydb_path=f"vision_data_{u}.nogit.json",
-        )
+        self.vision_chain = VisionExtractorChain(tinydb_path=f"vision_data_{u}.nogit.json")
 
         try:
             # Pass image_paths (plural) to trigger multi-image logic

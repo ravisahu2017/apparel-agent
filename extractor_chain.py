@@ -1,9 +1,9 @@
 import os
 import json
 import base64
-import requests
 from pathlib import Path
 from tinydb import TinyDB
+from factory import ModelFactory
 from langchain_core.runnables import RunnableLambda
 from langchain_chroma import Chroma
 from clip_embeddings import CLIPEmbeddings
@@ -18,17 +18,11 @@ class VisionExtractorChain:
     4. Storing summary text in Chroma Vectorstore
     """
 
-    model_priority = ["nvidia/nemotron-nano-12b-v2-vl:free", "anthropic/claude-3-haiku"]
-
     def __init__(
         self,
-        openrouter_key,
-        openrouter_model="openai/gpt-4o",
         tinydb_path="vision_data.json",
         vectorstore_collection="images",
     ):
-        self.api_key = openrouter_key
-        self.openrouter_model = openrouter_model
         self.vectorstore_collection = vectorstore_collection
         self.db = TinyDB(tinydb_path)
         self.embeddings = CLIPEmbeddings()
@@ -221,11 +215,6 @@ class VisionExtractorChain:
 
         """
 
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-        }
-
         content_array = [
             {
                 "type": "text",
@@ -235,41 +224,14 @@ class VisionExtractorChain:
         ]
         print("INFO", "Content array length:", len(content_array))
 
-        payload = {
-            "model": self.openrouter_model,
-            "messages": [
-                {"role": "system", "content": prompt},
-                {"role": "user", "content": content_array},
-            ],
-        }
-
-        for model_id in self.model_priority:
-            payload["model"] = model_id
-            try:
-                response = requests.post(
-                    "https://openrouter.ai/api/v1/chat/completions",
-                    headers=headers,
-                    json=payload,
-                    timeout=60,
-                )
-                res_json = response.json()
-                if "choices" in res_json:
-                    raw_response = res_json["choices"][0]["message"]["content"]
-
-                    # Parse the response to ensure valid JSON
-                    parsed_response = self.parse_response(
-                        {"raw_response": raw_response}
-                    )
-                    inputs["raw"] = parsed_response
-                    return inputs
-                else:
-                    print(
-                        "WARNING", f"Model {model_id} failed: {res_json.get('error')}"
-                    )
-            except Exception as e:
-                print("ERROR", f"Failed to use model {model_id}: {e}")
-                continue
-
+        response = ModelFactory.call_model("vision", prompt, content_array)
+        if response:
+            parsed_response = self.parse_response(
+                {"raw_response": response}
+            )
+            inputs["raw"] = parsed_response
+            return inputs
+        
     # ---------------------------------------------
     # STEP 3 → Save to TinyDB
     # ---------------------------------------------
