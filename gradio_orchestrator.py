@@ -74,7 +74,7 @@ class GradioOrchestrator:
             # Connect the button to the function
             extract_btn.click(
                 fn=self.process_extraction,
-                inputs=[input_imgs],
+                inputs=[input_imgs, view_input],
                 outputs=[
                     status_box,
                     output_details,
@@ -103,7 +103,7 @@ class GradioOrchestrator:
             )
         return demo
 
-    def process_extraction(self, input_images):
+    def process_extraction(self, input_images, view):
         if not input_images:
             return (
                 "Please upload at least one image.",
@@ -179,8 +179,15 @@ class GradioOrchestrator:
 
             gen_result = self.generator_chain.generate_prompt(
                 inputs={
-                    "description": "generate a front pose of the modal in the mentioned kurti",
-                    "view": "front view",
+                    "description": f"""
+                    Generate a {view} of the modal in the mentioned kurti
+                    [Input image details]: 
+                    - First image is the front view of the garment
+                    - Second image is the back view of the garment
+                    - Third image is the neckline detail view of the garment
+                    - Fourth image is showing the closeup of the repeat Pattern
+                    """,
+                    "view": view,
                     "market_place": "Meesho",
                 }
             )
@@ -244,7 +251,14 @@ class GradioOrchestrator:
         try:
             gen_result = self.generator_chain.generate_prompt(
                 inputs={
-                    "description": f"generate a {view} of the modal in the mentioned kurti",
+                    "description": f"""
+                    Generate a {view} of the modal in the mentioned kurti
+                    [Input image details]: 
+                    - First image is the front view of the garment
+                    - Second image is the back view of the garment
+                    - Third image is the neckline detail view of the garment
+                    - Fourth image is showing the closeup of the repeat Pattern
+                    """,
                     "view": view,
                     "market_place": "Meesho",
                 }

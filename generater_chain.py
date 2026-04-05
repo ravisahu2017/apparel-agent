@@ -85,12 +85,12 @@ class GeneratorChain:
                 The model is wearing the EXACT Kurti from the reference image. 
                 Specifications to enforce:
                 {context}
-                
-                [Technical Execution]: 
+
                 Photorealistic, studio lighting, clean white background, 8k resolution. Focus on the high-quality fabric texture of the {view} view. Ensure the embroidery edges and pineapple motifs are sharp and consistent with the reference.
 
                 [Image-to-Image Logic]: 
-                Transfer the garment from the reference image onto the model. Maintain the silhouette and fabric drape exactly as shown in the source. {description}.
+                Transfer the garment from the reference image onto the model. Maintain the silhouette and fabric drape exactly as shown in the source. 
+                {description}.
             """
         )
 
@@ -220,11 +220,6 @@ class GeneratorChain:
 
     def generate_with_siliconflow(self, prompt, img_list):
         print("---------generating image with siliconflow---------\n", len(img_list), prompt)
-        url = "https://api.siliconflow.com/v1/images/generations"
-
-
-        
-
         
         # img_list is expected to be a list of file-like objects from Gradio
         # We need the path or the content. Since Gradio gives file objects, we read them.
