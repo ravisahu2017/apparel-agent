@@ -1,8 +1,5 @@
 import os
 import base64
-import requests
-import uuid
-import tempfile
 from PIL import Image
 from io import BytesIO
 from openai import OpenAI
@@ -236,32 +233,8 @@ class GeneratorChain:
             except Exception as e:
                 print(f"Error encoding image: {e}")
 
-        img_url = ModelFactory.call_image_edit("image_edit", prompt, base64_imgs)
-        
-        if not img_url:
-            print(f"SiliconFlow response missing image URL: {img_url}")
-            return None
+        return ModelFactory.call_image_edit("image_edit", prompt, base64_imgs)
 
-        # Download the image to a temp location
-        temp_dir = tempfile.gettempdir()
-        temp_path = os.path.join(temp_dir, f"siliconflow_{uuid.uuid4()}.png")
-        
-        print(f"Downloading generated image from: {img_url}")
-        img_data = requests.get(img_url).content
-        
-        with open(temp_path, "wb") as f:
-            f.write(img_data)
-        
-        # Convert to base64
-        with open(temp_path, "rb") as f:
-            final_b64 = base64.b64encode(f.read()).decode("utf-8")
-        
-        # Cleanup
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
-            print(f"Temporary file {temp_path} deleted.")
-            
-        return final_b64
 
     def generate_prompt(self, inputs):
         result = self.chain().invoke(inputs)
@@ -269,7 +242,7 @@ class GeneratorChain:
 
     def generate_image(self, prompt, reference_images, output_path):
         base64 = self.generate_with_siliconflow(prompt, reference_images)
-        print("---------base64 generated successfully---------\n", base64)
+        print("---------base64 generated successfully---------\n", len(base64))
         image = self.base64_to_image(base64)
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         image.save(output_path)

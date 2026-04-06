@@ -18,8 +18,12 @@ from dotenv import load_dotenv
 
 
 class GradioOrchestrator:
+    """
+    Gradio interface for the AI Apparel Agent.
+    """
     def __init__(self):
         self.session_id = str(uuid.uuid4())
+        self.generation_fields_visible = False or (len(sys.argv) > 1 and sys.argv.__contains__("--show-generation-fields"))
         self.vision_chain = None
         self.generator_chain = None
         self.comparer = CompareByVisionLLM(os.getenv("OPENROUTER_API_KEY"))
@@ -44,7 +48,7 @@ class GradioOrchestrator:
                 with gr.Column():
                     output_details = gr.Textbox(label="Extracted Attributes")
 
-            with gr.Row(visible=False) as prompt_action_row:
+            with gr.Row(visible=self.generation_fields_visible) as prompt_action_row:
                 with gr.Column():
                     view_input = gr.Dropdown(
                         choices=["front view", "back view", "side view", "close-up view"],
@@ -64,11 +68,11 @@ class GradioOrchestrator:
 
                 with gr.Column():
                     image_gen_prompt = gr.Textbox(
-                        label="Image Generation Prompt", visible=False
+                        label="Image Generation Prompt", visible=self.generation_fields_visible
                     )
                     
 
-            with gr.Row(visible=False) as generation_row:
+            with gr.Row(visible=self.generation_fields_visible) as generation_row:
                 output_gallery = gr.Gallery(label="Generated Results", columns=3, rows=1, height="auto")
 
             # Connect the button to the function
@@ -109,8 +113,8 @@ class GradioOrchestrator:
                 "Please upload at least one image.",
                 None,
                 None,
-                gr.update(visible=False),
-                gr.update(visible=False),
+                gr.update(visible=self.generation_fields_visible),
+                gr.update(visible=self.generation_fields_visible),
             )
 
         # input_images is a list of file paths when select_compute is "files"
@@ -124,10 +128,10 @@ class GradioOrchestrator:
         # STEP 1: UI Feedback
         yield gr.update(
             value="Step 1: Extracting Attributes from multiple images...", visible=True
-        ), None, None, gr.update(visible=False), gr.update(visible=False)
+        ), None, None, gr.update(visible=self.generation_fields_visible), gr.update(visible=self.generation_fields_visible)
 
         # 2. RUN EXTRACTION
-        self.vision_chain = VisionExtractorChain(tinydb_path=f"vision_data_{u}.nogit.json")
+        self.vision_chain = VisionExtractorChain(tinydb_path=f"db/vision_data_{u}.nogit.json")
 
         try:
             # Pass image_paths (plural) to trigger multi-image logic
@@ -141,21 +145,21 @@ class GradioOrchestrator:
             # STEP 2: UI Feedback (Show extracted attributes)
             yield gr.update(
                 value=f"Step 2: Attributes Extracted from {len(input_images)} images!"
-            ), formatted_attributes, None, gr.update(visible=False), gr.update(
-                visible=False
+            ), formatted_attributes, None, gr.update(visible=self.generation_fields_visible), gr.update(
+                visible=self.generation_fields_visible
             )
 
         except Exception as e:
             yield gr.update(
                 value=f"❌ Error during extraction: {str(e)}"
-            ), None, None, gr.update(visible=False), gr.update(visible=False)
+            ), None, None, gr.update(visible=self.generation_fields_visible), gr.update(visible=self.generation_fields_visible)
             return
 
         # STEP 3: UI Feedback (Generating)
         yield gr.update(
             value="Step 3: Generating Fashion Prompt..."
-        ), formatted_attributes, None, gr.update(visible=False), gr.update(
-            visible=False
+        ), formatted_attributes, None, gr.update(visible=self.generation_fields_visible), gr.update(
+            visible=self.generation_fields_visible
         )
 
         # 3. RUN GENERATOR
@@ -163,19 +167,12 @@ class GradioOrchestrator:
             self.generator_chain = GeneratorChain(
                 os.getenv("OPENAI_API_KEY"),
                 os.getenv("OPENROUTER_API_KEY"),
-                tinydb_path=f"vision_data_{u}.nogit.json",
+                tinydb_path=f"db/vision_data_{u}.nogit.json",
             )
 
-            # Use a temporary output path for the Gradio result
-            output_filename = f"output/gradio_{u}.png"
             os.makedirs("output", exist_ok=True)
 
-            # We use the first image as the primary reference for generation
-            # or we could pass multiple if the generator supports it.
-            # Based on previous logic, we use at least one reference.
-            ref_files = [
-                open(img, "rb") for img in input_images[:2]
-            ]  # Take up to 2 for reference
+           
 
             gen_result = self.generator_chain.generate_prompt(
                 inputs={
@@ -192,10 +189,7 @@ class GradioOrchestrator:
                 }
             )
             cleaned_prompt = gen_result.get("cleaned_prompt", "no prompt generated")
-            # Close file handles
-            for f in ref_files:
-                f.close()
-
+           
             # FINAL OUTPUT
             yield gr.update(value="✅ Done!"), formatted_attributes, gr.update(
                 value=cleaned_prompt, visible=True
@@ -204,14 +198,19 @@ class GradioOrchestrator:
         except Exception as e:
             yield gr.update(
                 value=f"❌ Error during generation: {str(e)}"
-            ), formatted_attributes, None, gr.update(visible=False), gr.update(
-                visible=False
+            ), formatted_attributes, None, gr.update(visible=self.generation_fields_visible), gr.update(
+                visible=self.generation_fields_visible
             )
 
     def process_generation(self, prompt, input_images):
         if not self.generator_chain:
-            yield gr.update(value="❌ Please run extraction first"), self.generated_images
-            return
+            if not u:
+                u = uuid.uuid4();
+            self.generator_chain = GeneratorChain(
+                os.getenv("OPENAI_API_KEY"),
+                os.getenv("OPENROUTER_API_KEY"),
+                tinydb_path=f"db/vision_data_{u}.nogit.json",
+            )
 
         if not prompt or not input_images:
             yield gr.update(value="❌ Prompt and Images are required"), self.generated_images
