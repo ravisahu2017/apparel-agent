@@ -20,11 +20,6 @@ MODELS = {
         "temperature": 0.5
     }],
     "image_edit": [{
-        "id": "qwen/qwen3.6-plus:free",
-        "provider": "openrouter",
-        "temperature": 0.1
-    },
-    {
         "id": "black-forest-labs/FLUX.2-flex", # or flux.2-flex
         "provider": "siliconflow",
         "temperature": 0.1
