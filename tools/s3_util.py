@@ -2,16 +2,7 @@ import os
 import boto3
 from tools.utils.log import log
 from botocore.exceptions import NoCredentialsError
-from langchain.tools import tool
 
-
-@tool("get_s3_image_url", description="Constructs S3 URL for a given image filename")
-def get_s3_image_url(filename):
-    """Constructs S3 URL for a given image filename"""
-    return f"{BUCKET_BASE_URL}{filename}"
-
-
-@tool("download_from_s3", description="Downloads a file from S3 to a local path")
 def download_from_s3(s3_key, local_path):
     """Downloads a file from S3 to a local path"""
     BUCKET_BASE_URL = os.getenv("BUCKET_BASE_URL")
@@ -34,8 +25,6 @@ def download_from_s3(s3_key, local_path):
     except Exception as e:
         return f"Error downloading file: {e}"
 
-
-@tool("list_s3_files", description="Lists files in a given S3 prefix")
 def list_s3_files(prefix):
     """Lists files in a given S3 prefix"""
     BUCKET_BASE_URL = os.getenv("BUCKET_BASE_URL")
@@ -59,14 +48,7 @@ def list_s3_files(prefix):
         return f"Error listing files: {e}"
 
 
-@tool(
-    "upload_to_s3_tool", description="Uploads a file to S3 and returns the public URL"
-)
-def upload_to_s3_tool(file_path, s3_key):
-    upload_to_s3(file_path, s3_key)
-
-
-def upload_to_s3(file_path, s3_key):
+def upload_to_s3(file_path, s3_key, content_type="image/png"):
     """Uploads a file to S3 and returns the public URL"""
     BUCKET_BASE_URL = os.getenv("BUCKET_BASE_URL")
     S3_APPAREL_BUCKET_NAME = os.getenv("APPARELS_S3_BUCKET_NAME")
@@ -75,6 +57,7 @@ def upload_to_s3(file_path, s3_key):
         "s3",
         aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
         aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+        region_name=os.getenv("AWS_REGION", "ap-south-1")
     )
 
     if not os.path.exists(file_path):
@@ -90,7 +73,7 @@ def upload_to_s3(file_path, s3_key):
             file_path,
             S3_APPAREL_BUCKET_NAME,
             s3_key,
-            ExtraArgs={"ContentType": "image/png"},
+            ExtraArgs={"ContentType": content_type},
         )
         return f"{BUCKET_BASE_URL}{s3_key}"
     except FileNotFoundError:
@@ -99,3 +82,32 @@ def upload_to_s3(file_path, s3_key):
     except NoCredentialsError:
         log("AWS credentials not available.", level="ERROR")
         return "AWS credentials not available."
+
+
+def upload_file_object(file_object, s3_key, content_type="image/png"):
+    """Uploads a file object to S3 and returns the public URL"""
+    BUCKET_BASE_URL = os.getenv("BUCKET_BASE_URL")
+    S3_APPAREL_BUCKET_NAME = os.getenv("APPARELS_S3_BUCKET_NAME")
+
+    s3 = boto3.client(
+        "s3",
+        aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+        aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+        region_name=os.getenv("AWS_REGION", "ap-south-1")
+    )
+
+    log(
+        f"Uploading file object to S3 with key: {s3_key}, bucket: {S3_APPAREL_BUCKET_NAME}"
+    )
+
+    try:
+        s3.upload_fileobj(
+            file_object,
+            S3_APPAREL_BUCKET_NAME,
+            s3_key,
+            ExtraArgs={"ContentType": content_type},
+        )
+        return f"{BUCKET_BASE_URL}{s3_key}"
+    except Exception as e:
+        log(f"Error uploading file object: {e}", level="ERROR")
+        return f"Error uploading file object: {e}"

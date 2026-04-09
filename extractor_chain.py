@@ -1,13 +1,10 @@
-import os
 import json
-import base64
-from pathlib import Path
 from tinydb import TinyDB
 from factory import ModelFactory
 from langchain_core.runnables import RunnableLambda
 from langchain_chroma import Chroma
 from clip_embeddings import CLIPEmbeddings
-
+from tools.image_util import read_image_files, map_image_to_openai
 
 class VisionExtractorChain:
     """
@@ -30,26 +27,6 @@ class VisionExtractorChain:
         self.vectorstore = Chroma(
             collection_name="vision_attributes", embedding_function=self.embeddings
         )
-
-    def get_image_files(self, input_folder):
-        # Get all images from folder
-        image_files = []
-        if os.path.exists(input_folder):
-            image_extensions = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
-            for file in os.listdir(input_folder):
-                if Path(file).suffix.lower() in image_extensions:
-                    full_path = os.path.join(input_folder, file)
-                    image_files.append(full_path)
-        else:
-            return {"error": f"Folder not found: {input_folder}"}
-
-        if not image_files:
-            return {
-                "error": f"No images found in {input_folder}. Checked extensions: jpg, jpeg, png, gif, webp"
-            }
-
-        print("INFO", f"Total images found: {len(image_files)}")
-        return image_files
 
     def parse_response(self, inputs):
         """
@@ -126,7 +103,16 @@ class VisionExtractorChain:
     # ---------------------------------------------
     # STEP 1 → Load image file
     # ---------------------------------------------
-    def load_image(self, inputs):
+    def image_path_handler(self, inputs):
+        """
+        Handles image path input from various sources (Gradio UI, single path, folder)
+        Converts images present in paths to base64 format and returns them as a copatible input list for a vision model
+        Args:
+            inputs: Dictionary containing image paths or folder path
+            
+        Returns:
+            List of image file paths
+        """
         # Handle multiple image paths (for Gradio UI), single path, or folder
         if "image_paths" in inputs:
             image_files = inputs["image_paths"]
@@ -134,48 +120,13 @@ class VisionExtractorChain:
             image_files = [inputs["image_path"]]
         else:
             input_folder = inputs["input_folder"]
-            image_files = self.get_image_files(input_folder)
+            image_files = read_image_files(input_folder)
             image_files = sorted(image_files)
 
         # Convert images to base64
         image_content = []
         for img_path in image_files:
-            try:
-                with open(img_path, "rb") as img_file:
-                    image_data = img_file.read()
-                    base64_image = base64.b64encode(image_data).decode()
-
-                    # Determine image type from extension
-                    file_ext = Path(img_path).suffix.lower()
-                    if file_ext in [".jpg", ".jpeg"]:
-                        media_type = "image/jpeg"
-                    elif file_ext == ".png":
-                        media_type = "image/png"
-                    elif file_ext == ".gif":
-                        media_type = "image/gif"
-                    elif file_ext == ".webp":
-                        media_type = "image/webp"
-                    else:
-                        media_type = "image/jpeg"
-
-                    filename = Path(img_path).name
-                    print("INFO", f"Processing image: {filename}")
-                    image_content.append(
-                        {"type": "text", "text": f"Next image: {filename}"}
-                    )
-                    image_content.append(
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:{media_type};base64,{base64_image}",
-                                "name": filename,
-                            },
-                        }
-                    )
-                    print("INFO", f"Encoded image: {Path(img_path).name}")
-            except Exception as e:
-                print("ERROR", f"Error reading image {img_path}: {e}")
-                return {"error": f"Failed to read image {img_path}: {str(e)}"}
+            image_content.extend(map_image_to_openai(img_path))
         inputs["image_content"] = image_content
         return inputs
 
@@ -188,6 +139,7 @@ class VisionExtractorChain:
 
         Args:
             inputs: Dictionary containing image_content list
+            image_content: List of image content in base64 format
 
         Returns:
             Dictionary with extracted attributes
@@ -239,7 +191,7 @@ class VisionExtractorChain:
         record = {"product_id": inputs["product_id"], "attributes": inputs["raw"]}
         print("INFO", "Saving to TinyDB...", record)
         self.db.insert(record)
-        return inputs
+        return inputs["raw"]
 
     # ---------------------------------------------
     # STEP 5 → Add summary to Chroma vectorstore
@@ -276,7 +228,7 @@ class VisionExtractorChain:
     # ---------------------------------------------
     def chain(self):
         return (
-            RunnableLambda(self.load_image)
+            RunnableLambda(self.image_path_handler)
             | RunnableLambda(self.extract_attributes)
             | RunnableLambda(self.save_to_tinydb)
         )

@@ -9,6 +9,7 @@ from langchain_core.prompts import PromptTemplate
 from clip_embeddings import CLIPEmbeddings
 from langchain_core.runnables import RunnableLambda
 from factory import ModelFactory
+from tools.image_util import paths_to_b64urls
 from langchain_chroma import Chroma
 
 
@@ -220,19 +221,7 @@ class GeneratorChain:
         
         # img_list is expected to be a list of file-like objects from Gradio
         # We need the path or the content. Since Gradio gives file objects, we read them.
-        # But wait, the user's snippet used open(base_img_path). 
-        # In GradioOrchestrator, ref_files is a list of open file handles.
-        base64_imgs = []
-        for img in img_list:
-            try:
-                # Get the first image content from the list of file handles
-                img.seek(0)
-                img_content = img.read()
-                base64_img = base64.b64encode(img_content).decode("utf-8")
-                base64_imgs.append(base64_img)
-            except Exception as e:
-                print(f"Error encoding image: {e}")
-
+        base64_imgs = paths_to_b64urls(img_list)
         return ModelFactory.call_image_edit("image_edit", prompt, base64_imgs)
 
 

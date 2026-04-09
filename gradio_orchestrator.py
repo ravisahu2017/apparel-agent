@@ -135,6 +135,7 @@ class GradioOrchestrator:
 
         try:
             # Pass image_paths (plural) to trigger multi-image logic
+            print(f"extracting design elements from {len(input_images)} uploaded images")
             result = self.vision_chain.invoke(
                 {"image_paths": input_images, "product_id": p_id}
             )
@@ -171,8 +172,6 @@ class GradioOrchestrator:
             )
 
             os.makedirs("output", exist_ok=True)
-
-           
 
             gen_result = self.generator_chain.generate_prompt(
                 inputs={

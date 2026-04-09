@@ -1,8 +1,6 @@
 import os
 import requests
-import tempfile
-import base64
-import uuid
+from tools.image_util import url_to_base64
 from config import MODELS
 
 class ModelFactory:
@@ -188,29 +186,6 @@ class ModelFactory:
             else:
                 raise Exception("SiliconFlow response missing image URL")
         
-        return ModelFactory._url_to_base64(img_url)
-
-    @staticmethod
-    def _url_to_base64(img_url):
-        # Download the image to a temp location
-        temp_dir = tempfile.gettempdir()
-        temp_path = os.path.join(temp_dir, f"siliconflow_{uuid.uuid4()}.png")
-
-        print(f"Downloading generated image from: {img_url}")
-        img_data = requests.get(img_url).content
-        
-        with open(temp_path, "wb") as f:
-            f.write(img_data)
-        
-        # Convert to base64
-        with open(temp_path, "rb") as f:
-            final_b64 = base64.b64encode(f.read()).decode("utf-8")
-        
-        # Cleanup
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
-            print(f"Temporary file {temp_path} deleted.")
-            
-        return final_b64
+        return url_to_base64(img_url)
         
     
