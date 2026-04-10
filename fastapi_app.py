@@ -12,8 +12,10 @@ from dotenv import load_dotenv
 from typing import List
 import tempfile
 
+import mcp_client
 from tools.s3_util import upload_file_object
 from tinydb import TinyDB, Query
+
 
 # Load environment variables
 load_dotenv()
@@ -45,6 +47,7 @@ async def extract(files: List[UploadFile] = File(...)):
         print(f"Uploading {len(files)} files to S3...")
         upload_results = []
         s3_urls = []
+        temp_image_paths = []
         product_id = str(uuid.uuid4())
         for file in files:
             # Generate unique filename
@@ -52,7 +55,12 @@ async def extract(files: List[UploadFile] = File(...)):
             file_extension = spl[1]
             file_name = spl[0]
             unique_filename = f"{product_id}/{file_name}{file_extension}"
-            
+
+            temp_file_path = tempfile.NamedTemporaryFile(delete=False, suffix=file_extension).name
+            temp_image_paths.append(temp_file_path)
+            with open(temp_file_path, "wb") as f:
+                f.write(file.file.read())
+
             # Upload to S3
             s3_url = upload_file_object(file.file, unique_filename, f"image/{file_extension}")
             s3_urls.append(s3_url)
@@ -61,21 +69,23 @@ async def extract(files: List[UploadFile] = File(...)):
                 "s3_url": s3_url
             })
         
+        # Call MCP extraction tool
+        extraction_result = await mcp_client.extract_apparel_design(temp_image_paths, product_id)
+        
         # Save product data to TinyDB
         db = TinyDB(f"db/products.nogit.json")
         product_data = {
             "product_id": product_id,
             "timestamp": str(uuid.uuid4()),
-            "status": "uploaded"
+            "extraction_result": extraction_result,
+            "status": "extracted"
         }
+
         db.insert(product_data)
         print(f"Saved product data to TinyDB: {product_id}")
-        
-        
-        return JSONResponse(content={
+
+        return JSONResponse(content={**product_data,
             "message": "Images uploaded and processed successfully",
-            "uploads": upload_results,
-            "product_id": product_id,
         })
         
     except Exception as e:
@@ -83,6 +93,7 @@ async def extract(files: List[UploadFile] = File(...)):
             status_code=500,
             content={"error": f"Failed to process images: {str(e)}"}
         )
+
 
 @app.post("/fetch-products")
 async def fetch_products():

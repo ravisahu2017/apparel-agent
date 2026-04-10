@@ -9,23 +9,21 @@ import uuid
 mcp = FastMCP("Apparel-Designer")
 
 @mcp.tool()
-def extract_apparel_design(image_paths: list[str]) -> dict:
+def extract_apparel_design(image_paths: list[str], product_id: str) -> dict:
     """
     Extracts design DNA from a apparel image (Silhouette, Fabric, Motif).
     Uses Claude-3-Haiku via OpenRouter.
     """
 
-    p_id = str(uuid.uuid4())
-    vision_chain = VisionExtractorChain(tinydb_path=f"db/vision_data_{p_id}.nogit.json")
-    design_dna = vision_chain.invoke({"image_paths": image_paths, "product_id": p_id})
+    print(f"Extracting design DNA for product {product_id} with {len(image_paths)} images")
+
+    vision_chain = VisionExtractorChain(tinydb_path=f"db/products.nogit.json")
+    design_dna = vision_chain.invoke({"image_paths": image_paths, "product_id": product_id})
     
-    return {
-        "design_attributes": design_dna,
-        "product_id": p_id
-    }
+    return design_dna
 
 @mcp.tool()
-def generate_prompt_for_view(product_details: dict, view: str, market_place: str = "Meesho") -> str:
+def generate_prompt_for_view(product_id: str, design_dna: dict, view: str, market_place: str = "Meesho") -> str:
     """
     Generates a prompt for a specific view of a product.
     Input:
@@ -38,12 +36,13 @@ def generate_prompt_for_view(product_details: dict, view: str, market_place: str
     generator_chain = GeneratorChain(
         os.getenv("OPENAI_API_KEY"),
         os.getenv("OPENROUTER_API_KEY"),
-        tinydb_path=f"db/vision_data_{product_details['product_id']}.nogit.json",
+        tinydb_path=f"db/products.nogit.json",
     )
     os.makedirs("output", exist_ok=True)
 
     gen_result = generator_chain.generate_prompt(
         inputs={
+            "product_id": product_id,
             "description": f"""
             Generate a {view} of the modal in the mentioned kurti
             [Input image details]: 
