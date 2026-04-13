@@ -10,6 +10,7 @@ from langchain_core.runnables import RunnableLambda
 from factory.modal_factory_v2 import ModelFactory
 from prompts.get_prompt import get_prompt
 from tools.image_util import paths_to_b64urls
+from factory.content_bundle import UserContent
 
 
 class GeneratorChain:
@@ -182,6 +183,13 @@ class GeneratorChain:
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         image.save(output_path)
         return output_path
+
+    def generate_image_v2(self, prompt, input_paths):
+        reference_images = paths_to_b64urls(input_paths)
+        bundle = UserContent(system_prompt=prompt, images=reference_images, temperature=0.1)
+        base64 = ModelFactory.call_image_edit("image_edit", bundle)
+        print("---------base64 generated successfully---------\n", len(base64))
+        return base64
 
     def invoke(self, inputs, reference_images, output_path):
         result = self.chain().invoke(inputs)

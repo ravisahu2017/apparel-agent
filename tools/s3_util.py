@@ -5,7 +5,6 @@ from botocore.exceptions import NoCredentialsError
 
 def download_from_s3(s3_key, local_path):
     """Downloads a file from S3 to a local path"""
-    BUCKET_BASE_URL = os.getenv("BUCKET_BASE_URL")
     S3_APPAREL_BUCKET_NAME = os.getenv("APPARELS_S3_BUCKET_NAME")
     print("Downloading from S3 with key:", s3_key)
     s3 = boto3.client(
@@ -27,7 +26,6 @@ def download_from_s3(s3_key, local_path):
 
 def list_s3_files(prefix):
     """Lists files in a given S3 prefix"""
-    BUCKET_BASE_URL = os.getenv("BUCKET_BASE_URL")
     S3_APPAREL_BUCKET_NAME = os.getenv("APPARELS_S3_BUCKET_NAME")
     log(f"Listing S3 files with prefix: {prefix}")
     s3 = boto3.client(

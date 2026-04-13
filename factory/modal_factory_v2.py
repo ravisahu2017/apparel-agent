@@ -1,5 +1,8 @@
 import os
+import json
 import requests
+import time
+from pydantic import BaseModel
 from factory.content_bundle import UserContent
 from tools.image_util import url_to_base64
 from factory.config import MODELS
@@ -7,19 +10,19 @@ from factory.config import MODELS
 
 class ModelFactory:
     @staticmethod
-    def call_model(agent_role, prompt, user_content: UserContent=None):
+    def call_model(agent_role, user_content: UserContent = None):
         config_list = MODELS[agent_role]
         print("INFO", f"Calling model for agent role: {agent_role}")
         response = None
         for model in config_list:
-            print(f"INFO ATTEMPT #{config_list.index(model) + 1}", f"Calling {model['provider']} with model: {model['id']}")
+            print("INFO", f"ATTEMPT #{config_list.index(model) + 1}", f"Calling {model['provider']} with model: {model['id']}")
             try:
                 if model["provider"] == "openrouter":
-                    response = ModelFactory._call_openrouter(model, prompt, user_content)
+                    response = ModelFactory._call_openrouter(model, user_content)
                 elif model["provider"] == "siliconflow":
-                    response = ModelFactory._call_siliconflow(model, prompt, user_content)
+                    response = ModelFactory._call_siliconflow(model, user_content)
                 elif model["provider"] == "google":
-                    response = ModelFactory._call_google(model, prompt, user_content)
+                    response = ModelFactory._call_google(model, user_content)
             except Exception as e:
                 print("ERROR", f"Failed to use model {model['id']}: {e}")
                 continue
@@ -27,21 +30,23 @@ class ModelFactory:
         return response
 
     @staticmethod
-    def call_image_edit(agent_role, prompt, content_array):
+    def call_image_edit(agent_role, user_content: UserContent = None):
         config_list = MODELS[agent_role]
         print("INFO", f"Calling model for agent role: {agent_role}")
+        response = None
         for model in config_list:
+            print("INFO", f"ATTEMPT #{config_list.index(model) + 1}", f"Calling {model['provider']} with model: {model['id']}")
             try:
-                if model["provider"] == "openrouter":
-                    return ModelFactory._call_image_edit_openrouter(model, prompt, content_array)
-                elif model["provider"] == "siliconflow":
-                    return ModelFactory._call_image_edit_siliconflow(model, prompt, content_array)
+                if model["provider"] == "google":
+                    response = ModelFactory._call_image_gen_google(model, user_content)
             except Exception as e:
                 print("ERROR", f"Failed to use model {model['id']}: {e}")
                 continue
+        print("INFO", f"------image edit model response----\n", response)
+        return response
     
     @staticmethod
-    def _call_openrouter(model, system_prompt, user_content: UserContent):
+    def _call_openrouter(model, user_content: UserContent):
         # Your specific OpenRouter requests logic here
         # Uses os.getenv("OPENROUTER_API_KEY")
         url = "https://openrouter.ai/api/v1/chat/completions"
@@ -63,7 +68,7 @@ class ModelFactory:
         payload = {
             "model": model["id"],
             "messages": [
-                {"role": "system", "content": system_prompt},
+                {"role": "system", "content": user_content.system_prompt},
                 {"role": "user", "content": message_content}, # This is the array we just built
             ],
             "temperature": user_content.temperature,
@@ -79,7 +84,7 @@ class ModelFactory:
             raise Exception(f"Model {model['id']} failed: {res_json.get('error')}")
 
     @staticmethod
-    def _call_google(model, system_prompt, user_content: UserContent):
+    def _call_google(model, user_content: UserContent):
         """Native call to Google AI Studio (Gemini)"""
         api_key = os.getenv("GOOGLE_AI_STUDIO_KEY")
         # Google uses a different URL structure
@@ -105,17 +110,22 @@ class ModelFactory:
                 user_parts.append({"inline_data": {"mime_type": "image/png", "data": raw_b64}})
         
         payload = {
-            "system_instruction": {"parts": {"text": system_prompt}},
+            "system_instruction": {"parts": {"text": user_content.system_prompt}},
             "contents": [{"role": "user", "parts": user_parts}],
             "generationConfig": {
                 "temperature": user_content.temperature,
-                "response_mime_type": "application/json" if "json" in system_prompt.lower() else "text/plain"
+                "response_mime_type": "application/json" if "json" in user_content.system_prompt.lower() else "text/plain"
             }
         }
 
-        response = requests.post(url, headers=headers, json=payload, timeout=60)
+        response = requests.post(
+            url=url, 
+            headers=headers, 
+            json=payload, 
+            timeout=60*5
+        )
         res_json = response.json()
-
+        print("INFO _call_google api response:\n", res_json)
         if "candidates" in res_json:
             return res_json["candidates"][0]["content"]["parts"][0]["text"]
         else:
@@ -124,7 +134,7 @@ class ModelFactory:
             raise Exception(f"Google API Error: {error_msg}")
 
     @staticmethod
-    def _call_siliconflow(model, system_prompt, user_content: UserContent):
+    def _call_siliconflow(model, user_content: UserContent):
         # Your specific SiliconFlow requests logic here
         # Uses os.getenv("SILICONFLOW_API_KEY")
         headers = {
@@ -145,11 +155,11 @@ class ModelFactory:
         payload = {
             "model": model["id"],
             "messages": [
-                {"role": "system", "content": system_prompt},
+                {"role": "system", "content": user_content.system_prompt},
                 {"role": "user", "content": message_content},
             ],
             "temperature": model.get("temperature", 0.1),
-            "response_format": {"type": "json_object"} if "json" in system_prompt.lower() else None
+            "response_format": {"type": "json_object"} if "json" in user_content.system_prompt.lower() else None
         }
 
         response = requests.post(url, headers=headers, json=payload, timeout=60)
@@ -163,81 +173,111 @@ class ModelFactory:
 
 
     @staticmethod
-    def _call_image_edit_openrouter(model, system_prompt, user_content):
-        # Your specific OpenRouter requests logic here
-        # Uses os.getenv("OPENROUTER_API_KEY")
-        headers = {
-            "Authorization": f"Bearer {os.getenv('OPENROUTER_API_KEY')}",
-            "Content-Type": "application/json",
-        }
-        if user_content:
-            payload = {
-                "model": model["id"],
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_content},
-                ],
-            }
-        else:
-            payload = {
-                "model": model["id"],
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                ],
-            }
+    def _call_image_gen_google(model, content: UserContent):
+        """
+        Native Google AI Studio call for Multimodal Image Generation.
+        Uses reference images from UserContent to guide the output.
+        """
+        api_key = os.getenv("GOOGLE_AI_STUDIO_KEY")
+        # Using v1beta for access to multimodal 'predict' features
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model['id']}:generateContent?key={api_key}"
+        
+        headers = {"Content-Type": "application/json"}
 
-        print("INFO", f"Calling OpenRouter with model: {model['id']}")
-        response = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers=headers,
-            json=payload,
-            timeout=60, 
-        )
-        res_json = response.json()
-        if "choices" in res_json:
-            return res_json["choices"][0]["message"]["content"]
-        else:
-            print(
-                "WARNING", f"Model {model['id']} failed: {res_json.get('error')}"
-            )
+        # 1. Build the Multimodal contents array
+        # Gemini 3 treats image generation as a text + image input/output task
 
+        user_parts = []
+        if content.text:
+            user_parts.append({"text": content.text})
+        
+        if content.has_images():
+            for i, b64 in enumerate(content.images):
+                # Extract raw base64 data from data URL format
+                if b64.startswith('data:'):
+                    # Remove data:image/png;base64, prefix
+                    raw_b64 = b64.split(',')[1]
+                else:
+                    raw_b64 = b64
 
-    @staticmethod
-    def _call_image_edit_siliconflow(model, prompt, base64_images):
-        url = "https://api.siliconflow.com/v1/images/generations"
+                user_parts.append({
+                    "inline_data": {
+                        "mime_type": "image/png",
+                        "data": raw_b64
+                    }
+                })
 
-        headers = {
-            "Authorization": f"Bearer {os.getenv('SILICONFLOW_API_KEY')}",
-            "Content-Type": "application/json",
-        }
-
+        # 2. Build the payload
+        # The prompt should ideally refer to the images as [1], [2], etc.
         payload = {
-            "prompt": prompt,
-            "model": model["id"],
-            "image_size": "512x512",
-            "images": base64_images,
+            "contents": [
+                {
+                    "role": "user",
+                    "parts": user_parts
+                }
+            ],
+            "generationConfig": {
+                # This tells Gemini to output both TEXT and IMAGE
+                "responseModalities": ["TEXT", "IMAGE"],
+                "candidateCount": 1,
+                "imageConfig": {
+                    "aspectRatio": "1:1",
+                    "imageSize": "1K"
+                }
+            }
         }
 
-        print("INFO", f"Calling SiliconFlow with model: {model['id']}")
-        response = requests.post(url, headers=headers, json=payload, timeout=60)
-        
-        if response.status_code == 200:
-            img_url = response.json()["data"][0]["url"]
-        else:
-            print(f"SiliconFlow Error: {response.text}")
-            if os.getenv("ENV") == "dev":
-                img_url = "https://rs-apparels.s3.ap-south-1.amazonaws.com/a7a45301-f29b-40b2-abd7-48bd0b1081d9/cleaned/front.png"
-            else:
-                raise Exception("SiliconFlow response missing image URL")
-            
+        # Add system instruction if provided
+        if content.system_prompt:
+            payload["systemInstruction"] = {"parts": [{"text": content.system_prompt}]}
 
-        if not img_url:
-            print(f"SiliconFlow response missing image URL: {img_url}")
-            if os.getenv("ENV") == "dev":
-                img_url = "https://rs-apparels.s3.ap-south-1.amazonaws.com/a7a45301-f29b-40b2-abd7-48bd0b1081d9/cleaned/front.png"
-            else:
-                raise Exception("SiliconFlow response missing image URL")
+        print("INFO", f"Calling Google Multimodal Gen: {model['id']} with {len(content.images)} refs")
         
-        return url_to_base64(img_url)
+        # Retry logic with exponential backoff for rate limiting
+        max_retries = 3
+        base_delay = 2  # seconds
         
-    
+        for attempt in range(max_retries):
+            try:
+                response = requests.post(url, headers=headers, json=payload, timeout=120)
+                
+                # Handle rate limiting specifically
+                if response.status_code == 429:
+                    if attempt < max_retries - 1:
+                        delay = base_delay * (2 ** attempt)  # Exponential backoff
+                        print(f"INFO", f"Rate limited. Retrying in {delay} seconds... (attempt {attempt + 1}/{max_retries})")
+                        time.sleep(delay)
+                        continue
+                    else:
+                        raise Exception(f"Rate limit exceeded after {max_retries} attempts")
+                
+                response.raise_for_status()
+                res_json = response.json()
+                
+                # Parse the response according to the new format
+                if "candidates" in res_json and len(res_json["candidates"]) > 0:
+                    candidate = res_json["candidates"][0]
+                    if "content" in candidate and "parts" in candidate["content"]:
+                        for part in candidate["content"]["parts"]:
+                            if "inlineData" in part and "data" in part["inlineData"]:
+                                # Return the base64 string of the generated image
+                                return part["inlineData"]["data"]
+                
+                # If we get here, no image was found in the response
+                print("ERROR", f"No image in response: {res_json}")
+                raise Exception(f"Google Imagen API Error: No image generated - {res_json}")
+                    
+            except requests.exceptions.RequestException as e:
+                if attempt < max_retries - 1:
+                    delay = base_delay * (2 ** attempt)
+                    print(f"INFO", f"Request failed. Retrying in {delay} seconds... (attempt {attempt + 1}/{max_retries})")
+                    time.sleep(delay)
+                    continue
+                else:
+                    raise Exception(f"Image Generation failed after {max_retries} attempts: {e}")
+            except Exception as e:
+                print("ERROR", f"Image Generation failed: {e}")
+                if os.getenv("ENV") == "dev":
+                    # Return a fallback from your S3 for dev testing
+                    return "DEVELOPMENT_MODE_MOCK_IMAGE_BASE64"
+                raise e

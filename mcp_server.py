@@ -57,7 +57,7 @@ def generate_prompt_for_view(product_id: str, design_json: dict, view: str, mark
 
 
 @mcp.tool()
-def generate_image_from_prompt(prompt: str, input_images: list[str], product_details: dict) -> str:
+def generate_image_from_prompt(prompt: str, input_images: list[str]) -> str:
     """
     Generates an image from a prompt.
     Input:
@@ -67,12 +67,11 @@ def generate_image_from_prompt(prompt: str, input_images: list[str], product_det
     
     generator_chain = GeneratorChain(
         os.getenv("OPENAI_API_KEY"),
-        os.getenv("OPENROUTER_API_KEY"),
-        tinydb_path=f"db/vision_data_{product_details['product_id']}.nogit.json",
+        os.getenv("OPENROUTER_API_KEY")
     )
     os.makedirs("output", exist_ok=True)
 
-    gen_result = generator_chain.generate_with_siliconflow(prompt, input_images)
+    gen_result = generator_chain.generate_image_v2(prompt, input_images)
 
     return gen_result
 

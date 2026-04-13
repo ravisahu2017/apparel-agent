@@ -18,6 +18,7 @@ import mcp_client
 from tools.s3_util import upload_file_object
 from tinydb import TinyDB, Query
 import json
+from tools.s3_util import list_s3_files, download_from_s3
 
 # Load environment variables
 load_dotenv()
@@ -110,8 +111,61 @@ async def generate(product_id: str = Form(...)):
     async def event_generator():
         print(f"Generating image for product: {product_id}")
         yield yield_output("generate started", "formatted_string", "Generating image")
-        # TODO: Implement image generation logic here
-        yield yield_output("generate complete", "formatted_string", "Image generated successfully")
+        
+        #fetch prompt from tiny db for product_id
+        db = TinyDB("db/products.nogit.json")
+        ProductQuery = Query()
+        
+        # Search for record with matching product_id
+        records = db.search(ProductQuery.product_id == product_id)
+        
+        if not records:
+            yield yield_output("generate failed", "formatted_string", f"No product found with ID: {product_id}")
+            return
+            
+        product_record = records[0]
+        prompt = product_record.get("prompt", "")
+
+        
+        # List all files in S3 with the product_id prefix
+        s3_files = list_s3_files(product_id)
+        
+        if not s3_files or isinstance(s3_files, str):
+            yield yield_output("generate failed", "formatted_string", f"No images found for product: {product_id}")
+            return
+            
+        # Create temporary directory for downloaded images
+        temp_dir = tempfile.mkdtemp(prefix=f"product_{product_id}_")
+        input_images = []
+        
+        yield yield_output("downloading images", "formatted_string", f"Downloading {len(s3_files)} images...")
+        
+        # Download each file from S3
+        for s3_key in s3_files:
+            # Extract filename from S3 key
+            filename = s3_key.split('/')[-1]
+            local_path = os.path.join(temp_dir, filename)
+            
+            # Download file from S3
+            download_result = download_from_s3(s3_key, local_path)
+            
+            if "Error" not in download_result and os.path.exists(local_path):
+                input_images.append(local_path)
+                print(f"Downloaded: {s3_key} -> {local_path}")
+            else:
+                print(f"Failed to download: {s3_key}")
+        
+        if not input_images:
+            yield yield_output("generate failed", "formatted_string", "Failed to download any images")
+            return
+            
+        yield yield_output("images ready", "formatted_string", f"Downloaded {len(input_images)} images for generation")
+
+        result = await mcp_client.generate_fashion_image(prompt, input_images)
+
+        yield yield_output("generate complete", "formatted_string", "Image generated successfully", {
+            "base64_image": result
+        })
     
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 

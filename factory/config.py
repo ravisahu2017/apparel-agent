@@ -33,7 +33,14 @@ MODELS = {
         "provider": "google",
         "temperature": 0.1
     }],
+
     "image_edit": [{
+        "id": "gemini-3.1-flash-image-preview",  # Current stable high-speed vision
+        "provider": "google",
+        "temperature": 0.1
+    }],
+
+    "image_edit1": [{
         "id": "black-forest-labs/FLUX.2-flex", # or flux.2-flex
         "provider": "siliconflow",
         "temperature": 0.1

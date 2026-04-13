@@ -151,8 +151,8 @@ class VisionExtractorChain:
 
         prompt = get_prompt("extraction_prompt_v2")
         
-        bundle = UserContent(text="Analyze this image and extract the requested attributes.", images=image_content, temperature=0.1)
-        inputs["extracted_attributes"] = ModelFactory.call_model("vision", prompt, bundle)
+        bundle = UserContent(system_prompt=prompt, text="Analyze this image and extract the requested attributes.", images=image_content, temperature=0.1)
+        inputs["extracted_attributes"] = ModelFactory.call_model("vision", bundle)
         return inputs
 
     # ---------------------------------------------
@@ -164,29 +164,6 @@ class VisionExtractorChain:
             | RunnableLambda(self.extract_attributes)
             | RunnableLambda(self.parse_response)
         )
-
-
-    def convert_to_json(self, text):
-        prompt = """
-        You are a JSON formatter. You have been given a response from a vision model. Convert the response to a valid JSON object.
-        """
-        schema = {
-            "Type of garment": "Kurti", 
-            "Silhouette": "", 
-            "Patterns": [], 
-            "Colors": [], 
-            "Sleeves": "", 
-            "Top length": "", 
-            "Neck design": "", 
-            "Border hem details": "", 
-            "Notable visual details": "", 
-            "Style category": "", 
-            "Keywords": []
-        }
-        prompt = f"You are a fashion data parser. Convert raw text into valid JSON according to this schema: {schema}. Return ONLY the JSON object. No preamble."
-
-        return ModelFactory.call_model("general", prompt, text)
-
 
     # ---------------------------------------------
     # RUNNER
