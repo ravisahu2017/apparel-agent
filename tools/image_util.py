@@ -4,6 +4,7 @@ import uuid
 import requests
 from pathlib import Path
 import os
+import io
 
 def path_to_b64(image_file):
     try:
@@ -84,4 +85,19 @@ def map_image_to_openai(image_path):
         {"type": "image_url", "image_url": {"url": path_to_base64url(image_path)}}
     ]
 
-
+def get_file_object(base64_string):
+    # Convert base64 string to file-like object
+    import io
+    import base64
+    
+    # Remove data URL prefix if present
+    if base64_string.startswith('data:'):
+        base64_data = base64_string.split(',')[1]
+    else:
+        base64_data = base64_string
+        
+    # Decode base64 and create file-like object
+    image_bytes = base64.b64decode(base64_data)
+    image_file = io.BytesIO(image_bytes)
+    
+    return image_file

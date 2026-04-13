@@ -4,6 +4,7 @@ import requests
 import time
 from pydantic import BaseModel
 from factory.content_bundle import UserContent
+from tools import image_util
 from tools.image_util import url_to_base64
 from factory.config import MODELS
 
@@ -279,5 +280,6 @@ class ModelFactory:
                 print("ERROR", f"Image Generation failed: {e}")
                 if os.getenv("ENV") == "dev":
                     # Return a fallback from your S3 for dev testing
-                    return "DEVELOPMENT_MODE_MOCK_IMAGE_BASE64"
+                    print("DEVELOPMENT_MODE_MOCK_IMAGE_BASE64")
+                    return image_util.url_to_base64("https://rs-apparels.s3.ap-south-1.amazonaws.com/gen_f.png")
                 raise e

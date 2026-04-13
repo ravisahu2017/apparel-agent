@@ -8,17 +8,17 @@ import uuid
 import json
 from fastapi import FastAPI, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
 from typing import List
 import tempfile
-from datetime import datetime
 
 import mcp_client
 from tools.s3_util import upload_file_object
 from tinydb import TinyDB, Query
-import json
 from tools.s3_util import list_s3_files, download_from_s3
+from tools.tiny_db import update_record, insert_record
+from tools.image_util import get_file_object
 
 # Load environment variables
 load_dotenv()
@@ -77,26 +77,20 @@ async def extract(files: List[UploadFile] = File(...)):
             # Yield DNA immediately so UI can show it
             yield yield_output("design DNA extracted","json", "Design DNA extracted", design_json)
             
-            db = TinyDB("db/products.nogit.json")
-      
-            db.insert({
+            insert_record({
                 "product_id": product_id,
                 "design_json": design_json,
-                "status": "design_extracted",
-                "created_at": datetime.now().isoformat()
             })
             
             # Assuming you have a prompt generation method in your mcp_client
             prompt_result = await mcp_client.generate_fashion_prompt(product_id, "front", design_json)
             
             # Save final state to TinyDB
-            db.update({
+            update_record(product_id, {
                 "product_id": product_id,
-                "design_json": design_json,
                 "prompt": prompt_result,
-                "status": "prompt_generated",
-                "updated_at": datetime.now().isoformat()
-            }, doc_ids=[1])
+                "status": "prompt_generated"
+            })
 
             # Final yield with full data
             yield yield_output("extraction complete", "formatted_string", "You can review this prompt and hit generate to generate the image", prompt_result)
@@ -107,7 +101,7 @@ async def extract(files: List[UploadFile] = File(...)):
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 @app.post("/generate")
-async def generate(product_id: str = Form(...)):
+async def generate(product_id: str = Form(...), view: str = Form(...)):
     async def event_generator():
         print(f"Generating image for product: {product_id}")
         yield yield_output("generate started", "formatted_string", "Generating image")
@@ -126,7 +120,7 @@ async def generate(product_id: str = Form(...)):
         product_record = records[0]
         prompt = product_record.get("prompt", "")
 
-        
+
         # List all files in S3 with the product_id prefix
         s3_files = list_s3_files(product_id)
         
@@ -162,9 +156,19 @@ async def generate(product_id: str = Form(...)):
         yield yield_output("images ready", "formatted_string", f"Downloaded {len(input_images)} images for generation")
 
         result = await mcp_client.generate_fashion_image(prompt, input_images)
-
+        
+        image_file = get_file_object(result)
+        s3_url = upload_file_object(image_file, f"{product_id}/generated/{view}_{uuid.uuid4()}.png", "image/png")
+        data = {
+            "product_id": product_id,
+            "status": "image_generated"
+        }
+        if view.index("front") != -1:
+            data[f"image_url"] = s3_url
+        # Save final state to TinyDB
+        update_record(product_id, data)
         yield yield_output("generate complete", "formatted_string", "Image generated successfully", {
-            "base64_image": result
+            "image_url": s3_url
         })
     
     return StreamingResponse(event_generator(), media_type="text/event-stream")
