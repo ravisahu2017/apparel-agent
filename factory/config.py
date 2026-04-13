@@ -13,11 +13,25 @@ MODELS = {
         "id": "anthropic/claude-3-haiku",
         "provider": "openrouter",
         "temperature": 0.1
+    },{
+        "id": "gemini-2.5-flash",  # Current stable high-speed vision
+        "provider": "google",
+        "temperature": 0.1
+    },
+    {
+        "id": "gemini-3-flash-preview", # Cutting edge high-speed
+        "provider": "google",
+        "temperature": 0.1
     }],
-    "generation_prompt": [{
-        "id": "anthropic/claude-3-haiku",
-        "provider": "openrouter",
-        "temperature": 0.5
+    "text": [{
+        "id": "gemini-2.5-flash",  # Current stable high-speed vision
+        "provider": "google",
+        "temperature": 0.1
+    },
+    {
+        "id": "gemini-3-flash-preview", # Cutting edge high-speed
+        "provider": "google",
+        "temperature": 0.1
     }],
     "image_edit": [{
         "id": "black-forest-labs/FLUX.2-flex", # or flux.2-flex
@@ -36,10 +50,4 @@ MODELS = {
         "provider": "siliconflow",
         "temperature": 0.1
     }]
-}
-
-# API KEYS
-API_KEYS = {
-    "openrouter": os.getenv("OPENROUTER_API_KEY"),
-    "siliconflow": os.getenv("SILICONFLOW_API_KEY"),
 }

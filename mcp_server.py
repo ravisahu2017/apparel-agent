@@ -1,9 +1,7 @@
 import os
 from mcp.server.fastmcp import FastMCP
-from factory import ModelFactory
 from extractor_chain import VisionExtractorChain
 from generater_chain import GeneratorChain
-import uuid
 
 # Initialize FastMCP server
 mcp = FastMCP("Apparel-Designer")
@@ -23,7 +21,7 @@ def extract_apparel_design(image_paths: list[str], product_id: str) -> dict:
     return design_dna
 
 @mcp.tool()
-def generate_prompt_for_view(product_id: str, design_dna: dict, view: str, market_place: str = "Meesho") -> str:
+def generate_prompt_for_view(product_id: str, design_json: dict, view: str, market_place: str = "Meesho") -> str:
     """
     Generates a prompt for a specific view of a product.
     Input:
@@ -36,13 +34,12 @@ def generate_prompt_for_view(product_id: str, design_dna: dict, view: str, marke
     generator_chain = GeneratorChain(
         os.getenv("OPENAI_API_KEY"),
         os.getenv("OPENROUTER_API_KEY"),
-        tinydb_path=f"db/products.nogit.json",
     )
-    os.makedirs("output", exist_ok=True)
 
     gen_result = generator_chain.generate_prompt(
         inputs={
             "product_id": product_id,
+            "design_json": design_json,
             "description": f"""
             Generate a {view} of the modal in the mentioned kurti
             [Input image details]: 

@@ -3,14 +3,13 @@ import base64
 from PIL import Image
 from io import BytesIO
 from openai import OpenAI
-from tinydb import TinyDB, Query
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import PromptTemplate
 from clip_embeddings import CLIPEmbeddings
 from langchain_core.runnables import RunnableLambda
-from factory import ModelFactory
+from factory.modal_factory_v2 import ModelFactory
+from prompts.get_prompt import get_prompt
 from tools.image_util import paths_to_b64urls
-from langchain_chroma import Chroma
 
 
 class GeneratorChain:
@@ -23,34 +22,20 @@ class GeneratorChain:
         openai_api_key,
         openrouter_token,
         image_edit_token=None,
-        tinydb_path="vision_data.json",
-        vectorstore_collection="images",
     ):
         self.client = OpenAI(api_key=openai_api_key)
         self.openrouter_token = openrouter_token
         self.image_edit_token = image_edit_token or os.getenv("SILICONFLOW_API_KEY")
         self.clip_embeddings = CLIPEmbeddings()
-        self.db = TinyDB(tinydb_path)
-        self.vectorstore_collection = vectorstore_collection
-        # self.initialize_vectorstore()
         self.initialize_llm()
         self.initialize_prompt()
 
     def base64_to_image(self, b64_string):
         # decode base64
         image_bytes = base64.b64decode(b64_string)
-
         # convert to image
         image = Image.open(BytesIO(image_bytes))
-
         return image
-
-    def initialize_vectorstore(self):
-        self.vectorstore = Chroma(
-            collection_name=self.vectorstore_collection,
-            embedding_function=self.clip_embeddings,
-        )
-        self.retriever = self.vectorstore.as_retriever()
 
     def initialize_llm(self):
         self.llm = ChatOpenAI(
@@ -63,56 +48,23 @@ class GeneratorChain:
     def initialize_prompt(self):
         self.prompt = PromptTemplate(
             input_variables=["context", "description", "view", "market_place", "feedback"],
-            template="""
-                You are an expert AI Image Synthesis Engineer for {market_place}.
-                Your goal is to create a 'Reference-Guided' prompt. 
-
-                ### STEP 1: RE-ACT ANALYSIS
-                - Thought: I must identify the core garment from the context and map it to the user's requested {view}.
-                - Action: Create a prompt that anchors the AI to the provided reference image.
-
-                ### FEEDBACK FROM PREVIOUS ATTEMPT:
-                {feedback}
-
-                ### STEP 2: GENERATION PROMPT (Return this only)
-                [Primary Reference]: Use the attached source image as the structural foundation.
-                
-                [Actionable Scene]: A professional female fashion model in a {view} pose, high-end {market_place} ecommerce catalog style.
-                
-                [Garment Integrity Contract]: 
-                The model is wearing the EXACT Kurti from the reference image. 
-                Specifications to enforce:
-                {context}
-
-                Photorealistic, studio lighting, clean white background, 8k resolution. Focus on the high-quality fabric texture of the {view} view. Ensure the embroidery edges and pineapple motifs are sharp and consistent with the reference.
-
-                [Image-to-Image Logic]: 
-                Transfer the garment from the reference image onto the model. Maintain the silhouette and fabric drape exactly as shown in the source. 
-                {description}.
-            """
+            template=get_prompt("generate_prompt_template")
         )
 
     def get_context(self, inputs):
-        # retrieve attributes from tinydb
-        records = self.db.all()
-        context = records[0]["attributes"]
-        # if single element in context object, then context = context[that single key]
-        if len(context) == 1:
-            context = context[list(context.keys())[0]]
-
+        context = inputs["design_json"]
         # convert the context into a key value pair string
         context = "\n".join([f"{key}: {value}" for key, value in context.items()])
-
-        feedback = inputs.get("feedback", "No previous feedback. This is the first attempt.")
-
         print("---------context---------\n", context)
         return {
             "context": context,
             "description": inputs["description"],
             "view": inputs["view"],
             "market_place": inputs["market_place"],
-            "feedback": feedback,
+            "feedback": inputs.get("feedback", "")
         }
+
+    
 
     def prompt_parser(self, prompt):
         """
@@ -196,20 +148,19 @@ class GeneratorChain:
             if final_prompt.startswith(prefix):
                 final_prompt = final_prompt[len(prefix) :].strip()
 
-        return {
-            "cleaned_prompt": final_prompt,
-            "original_length": len(llm_response),
-            "cleaned_length": len(final_prompt),
-            "lines_removed": len(response_lines) - len(cleaned_lines),
-        }
+        return final_prompt
 
-    def chain(self):
+    def generate_prompt_chain(self):
         return (
             RunnableLambda(self.get_context)
             | self.prompt
             | self.llm
             | RunnableLambda(self.prompt_parser)
         )
+
+    def generate_prompt(self, inputs):
+        result = self.generate_prompt_chain().invoke(inputs)
+        return result
 
     def generate_with_reference(self, prompt, img):
         print("---------generating image with reference---------\n", prompt)
@@ -223,11 +174,6 @@ class GeneratorChain:
         # We need the path or the content. Since Gradio gives file objects, we read them.
         base64_imgs = paths_to_b64urls(img_list)
         return ModelFactory.call_image_edit("image_edit", prompt, base64_imgs)
-
-
-    def generate_prompt(self, inputs):
-        result = self.chain().invoke(inputs)
-        return result
 
     def generate_image(self, prompt, reference_images, output_path):
         base64 = self.generate_with_siliconflow(prompt, reference_images)

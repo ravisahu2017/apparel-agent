@@ -1,10 +1,12 @@
 import json
 from tinydb import TinyDB
-from factory import ModelFactory
+from prompts.get_prompt import get_prompt
+from factory.modal_factory_v2 import ModelFactory
+from factory.content_bundle import UserContent
 from langchain_core.runnables import RunnableLambda
 from langchain_chroma import Chroma
 from clip_embeddings import CLIPEmbeddings
-from tools.image_util import read_image_files, map_image_to_openai
+from tools.image_util import read_image_files, path_to_base64url
 
 class VisionExtractorChain:
     """
@@ -38,7 +40,7 @@ class VisionExtractorChain:
         Returns:
             Dictionary with clean JSON attributes
         """
-        raw_response = inputs.get("raw_response", "")
+        raw_response = inputs.get("extracted_attributes", "")
 
         if not raw_response:
             return {"error": "No response to parse"}
@@ -126,7 +128,7 @@ class VisionExtractorChain:
         # Convert images to base64
         image_content = []
         for img_path in image_files:
-            image_content.extend(map_image_to_openai(img_path))
+            image_content.append(path_to_base64url(img_path))
         inputs["image_content"] = image_content
         return inputs
 
@@ -147,81 +149,11 @@ class VisionExtractorChain:
         image_content = inputs["image_content"]
         print("INFO", "Extracting attributes from images", len(image_content))
 
-        prompt = """
-        You are a fashion vision model. You have been given a different images of a kurti. Analyze the kurti item in the images
-        and extract the following attributes:
-
-        - Type of garment: kurti
-        - Silhouette: A-line, fit, straight, etc.
-        - Patterns  
-        - Colors  
-        - Sleeves(3/4th, Full, Sleeveless, Half)
-        - Top length (Crop, Midi, short Midi, Long Midi, Maxi, etc.)
-        - Neck design (Round, V-Neck, deep v, etc.)
-        - Border hem details
-        - Notable visual details  
-        - Style category: casual, formal, ethnic, etc.  
-        - Keywords  
-
-        Return a JSON object with the extracted attributes.
-
-        """
-
-        content_array = [
-            {
-                "type": "text",
-                "text": "Analyze this image and extract the requested attributes.",
-            },
-            *image_content,
-        ]
-        print("INFO", "Content array length:", len(content_array))
-
-        response = ModelFactory.call_model("vision", prompt, content_array)
-        if response:
-            parsed_response = self.parse_response(
-                {"raw_response": response}
-            )
-            inputs["raw"] = parsed_response
-            return inputs
+        prompt = get_prompt("extraction_prompt_v2")
         
-    # ---------------------------------------------
-    # STEP 3 → Save to TinyDB
-    # ---------------------------------------------
-    def save_to_tinydb(self, inputs):
-        record = {"product_id": inputs["product_id"], "attributes": inputs["raw"]}
-        print("INFO", "Saving to TinyDB...", record)
-        self.db.insert(record)
-        return inputs["raw"]
-
-    # ---------------------------------------------
-    # STEP 5 → Add summary to Chroma vectorstore
-    # ---------------------------------------------
-    def add_images_to_vectorstore(self, inputs):
-        if "image_path" in inputs or "image_paths" in inputs:
-            # Skip vectorstore for UI flow for now
-            return
-        texts = []
-        metadatas = []
-        ids = []
-        s3_prefix = f"https://rs-apparels.s3.ap-south-1.amazonaws.com/{inputs['product_id']}/cleaned/"
-
-        image_files = self.get_image_files(inputs["input_folder"])
-
-        for i, path in enumerate(image_files):
-            view = path.split(".")[0]
-
-            texts.append(f"{view} view of kurti")  # 👈 REQUIRED for RAG
-            metadatas.append(
-                {
-                    "type": path,
-                    "view": view,
-                    "product_id": inputs["product_id"],
-                    "s3_url": s3_prefix + path,
-                }
-            )
-            ids.append(f"img_{i}")
-        print("--------------------\nadding images to vector", ids, texts, metadatas)
-        self.vectorstore.add_texts(texts=texts, metadatas=metadatas, ids=ids)
+        bundle = UserContent(text="Analyze this image and extract the requested attributes.", images=image_content, temperature=0.1)
+        inputs["extracted_attributes"] = ModelFactory.call_model("vision", prompt, bundle)
+        return inputs
 
     # ---------------------------------------------
     # FULL CHAIN
@@ -230,11 +162,44 @@ class VisionExtractorChain:
         return (
             RunnableLambda(self.image_path_handler)
             | RunnableLambda(self.extract_attributes)
-            | RunnableLambda(self.save_to_tinydb)
+            | RunnableLambda(self.parse_response)
         )
+
+
+    def convert_to_json(self, text):
+        prompt = """
+        You are a JSON formatter. You have been given a response from a vision model. Convert the response to a valid JSON object.
+        """
+        schema = {
+            "Type of garment": "Kurti", 
+            "Silhouette": "", 
+            "Patterns": [], 
+            "Colors": [], 
+            "Sleeves": "", 
+            "Top length": "", 
+            "Neck design": "", 
+            "Border hem details": "", 
+            "Notable visual details": "", 
+            "Style category": "", 
+            "Keywords": []
+        }
+        prompt = f"You are a fashion data parser. Convert raw text into valid JSON according to this schema: {schema}. Return ONLY the JSON object. No preamble."
+
+        return ModelFactory.call_model("general", prompt, text)
+
 
     # ---------------------------------------------
     # RUNNER
     # ---------------------------------------------
+    def invoke1(self, inputs):
+        for i in [0,1,2]:
+            print("INFO", f"Attempt {i+1} starting extraction chain")
+            response = self.chain().invoke(inputs)
+            if isinstance(response, dict):
+                return response
+            print("INFO", f"Attempt {i+1} failed, retrying...")
+
+        return None
+
     def invoke(self, inputs):
         return self.chain().invoke(inputs)

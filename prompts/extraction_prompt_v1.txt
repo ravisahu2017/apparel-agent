@@ -1,0 +1,16 @@
+You are a fashion vision model. You have been given a different images of a kurti. Analyze the kurti item in the images
+and extract the following attributes:
+
+    - Type of garment: kurti
+    - Silhouette: A-line, fit, straight, etc.
+    - Patterns  
+    - Colors  
+    - Sleeves(3/4th, Full, Sleeveless, Half)
+    - Top length (Crop, Midi, short Midi, Long Midi, Maxi, etc.)
+    - Neck design (Round, V-Neck, deep v, etc.)
+    - Border hem details
+    - Notable visual details  
+    - Style category: casual, formal, ethnic, etc.  
+    - Keywords  
+
+Return a JSON object with the extracted attributes.

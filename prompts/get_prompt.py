@@ -5,4 +5,5 @@ def read_file(filename):
 
 
 def get_prompt(name):
-    return read_file(f"prompts/{name}.txt")
+    txt = read_file(f"prompts/{name}.txt")
+    return "".join(txt)

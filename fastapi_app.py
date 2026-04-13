@@ -5,17 +5,19 @@ FastAPI application for uploading images to S3 and integrating with existing MCP
 
 import os
 import uuid
-from fastapi import FastAPI, File, UploadFile
+import json
+from fastapi import FastAPI, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from dotenv import load_dotenv
 from typing import List
 import tempfile
+from datetime import datetime
 
 import mcp_client
 from tools.s3_util import upload_file_object
 from tinydb import TinyDB, Query
-
+import json
 
 # Load environment variables
 load_dotenv()
@@ -31,71 +33,90 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+def yield_output(streamingStatus, type, message = None, data = None):
+    jsn = {"type": type, "streamingStatus": streamingStatus.lower()}
+    if data:
+        jsn['data'] = data
+    if message:
+        jsn['message'] = message
+    return f"data: {json.dumps(jsn)}\n\n"
+
 @app.post("/extract")
 async def extract(files: List[UploadFile] = File(...)):
-    """
-    Upload multiple images to S3 and process them with existing MCP tools.
-    
-    Args:
-        files: List of uploaded image files
-        
-    Returns:
-        JSON response with processing results or error message
-    """
-    try:
-        # Upload files to S3
-        print(f"Uploading {len(files)} files to S3...")
-        upload_results = []
-        s3_urls = []
-        temp_image_paths = []
-        product_id = str(uuid.uuid4())
-        for file in files:
-            # Generate unique filename
-            spl = os.path.splitext(file.filename)
-            file_extension = spl[1]
-            file_name = spl[0]
-            unique_filename = f"{product_id}/{file_name}{file_extension}"
+    async def event_generator():
+        try:
+            product_id = str(uuid.uuid4())
+            temp_image_paths = []
+            
+            # --- PHASE 1: UPLOADING ---
+            yield yield_output("uploading images to S3", "info")
+            
+            for file in files:
+                spl = os.path.splitext(file.filename)
+                file_extension = spl[1]
+                unique_filename = f"{product_id}/{spl[0]}{file_extension}"
 
-            temp_file_path = tempfile.NamedTemporaryFile(delete=False, suffix=file_extension).name
-            temp_image_paths.append(temp_file_path)
-            with open(temp_file_path, "wb") as f:
-                f.write(file.file.read())
+                # Save temp local copy for MCP tool
+                temp_file_path = tempfile.NamedTemporaryFile(delete=False, suffix=file_extension).name
+                temp_image_paths.append(temp_file_path)
+                content = await file.read() # Use await for UploadFile
+                with open(temp_file_path, "wb") as f:
+                    f.write(content)
 
-            # Upload to S3
-            s3_url = upload_file_object(file.file, unique_filename, f"image/{file_extension}")
-            s3_urls.append(s3_url)
-            upload_results.append({
-                "filename": file_name,
-                "s3_url": s3_url
+                # Upload to S3
+                # TODO: uncomment when S3 is ready - save billing for now
+                upload_file_object(file.file, unique_filename, f"image/{file_extension}")
+
+            # --- PHASE 2: DNA EXTRACTION ---
+            yield yield_output("analyzing design DNA", "formatted_string", f"New product created\nproduct_id: {product_id}")
+            
+            dna = await mcp_client.extract_apparel_design(temp_image_paths, product_id)
+            
+            design_json = json.loads(dna)
+            # Yield DNA immediately so UI can show it
+            yield yield_output("design DNA extracted","json", "Design DNA extracted", design_json)
+            
+            db = TinyDB("db/products.nogit.json")
+      
+            db.insert({
+                "product_id": product_id,
+                "design_json": design_json,
+                "status": "design_extracted",
+                "created_at": datetime.now().isoformat()
             })
-        
-        # Call MCP extraction tool
-        extraction_result = await mcp_client.extract_apparel_design(temp_image_paths, product_id)
-        
-        # Save product data to TinyDB
-        db = TinyDB(f"db/products.nogit.json")
-        product_data = {
-            "product_id": product_id,
-            "timestamp": str(uuid.uuid4()),
-            "extraction_result": extraction_result,
-            "status": "extracted"
-        }
+            
+            # Assuming you have a prompt generation method in your mcp_client
+            prompt_result = await mcp_client.generate_fashion_prompt(product_id, "front", design_json)
+            
+            # Save final state to TinyDB
+            db.update({
+                "product_id": product_id,
+                "design_json": design_json,
+                "prompt": prompt_result,
+                "status": "prompt_generated",
+                "updated_at": datetime.now().isoformat()
+            }, doc_ids=[1])
 
-        db.insert(product_data)
-        print(f"Saved product data to TinyDB: {product_id}")
+            # Final yield with full data
+            yield yield_output("extraction complete", "formatted_string", "You can review this prompt and hit generate to generate the image", prompt_result)
 
-        return JSONResponse(content={**product_data,
-            "message": "Images uploaded and processed successfully",
-        })
-        
-    except Exception as e:
-        return JSONResponse(
-            status_code=500,
-            content={"error": f"Failed to process images: {str(e)}"}
-        )
+        except Exception as e:
+            yield yield_output("extraction failed", "formatted_string", "Extraction failed", str(e))
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+@app.post("/generate")
+async def generate(product_id: str = Form(...)):
+    async def event_generator():
+        print(f"Generating image for product: {product_id}")
+        yield yield_output("generate started", "formatted_string", "Generating image")
+        # TODO: Implement image generation logic here
+        yield yield_output("generate complete", "formatted_string", "Image generated successfully")
+    
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
-@app.post("/fetch-products")
+@app.get("/fetch-products")
 async def fetch_products():
     """
     Load products from TinyDB
