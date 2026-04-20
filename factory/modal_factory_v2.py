@@ -1,13 +1,11 @@
 import os
 import json
-import requests
 import time
-from pydantic import BaseModel
-from factory.content_bundle import UserContent
+import boto3
+import requests
 from tools import image_util
-from tools.image_util import url_to_base64
 from factory.config import MODELS
-
+from factory.content_bundle import UserContent
 
 class ModelFactory:
     @staticmethod
@@ -172,7 +170,6 @@ class ModelFactory:
             print("ERROR", f"Model {model['id']} failed: {res_json.get('error')}")
             raise Exception(f"Model {model['id']} failed: {res_json.get('error')}")
 
-
     @staticmethod
     def _call_image_gen_google(model, content: UserContent):
         """
@@ -283,3 +280,4 @@ class ModelFactory:
                     print("DEVELOPMENT_MODE_MOCK_IMAGE_BASE64")
                     return image_util.url_to_base64("https://rs-apparels.s3.ap-south-1.amazonaws.com/gen_f.png")
                 raise e
+

@@ -99,7 +99,7 @@ async def generate_fashion_image(prompt: str, input_images: list[str]):
             "prompt": prompt,
             "input_images": input_images  # Would need to pass actual image paths
         })
-        print(f"----Result from generate_image_from_prompt: {result.content[0].text}")
+        print(f"----Result from generate_image_from_prompt: {len(result.content[0].text)}")
         return result.content[0].text
     
     return await execute_session(image_callback, prompt, input_images)

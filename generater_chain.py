@@ -188,7 +188,6 @@ class GeneratorChain:
         reference_images = paths_to_b64urls(input_paths)
         bundle = UserContent(system_prompt=prompt, images=reference_images, temperature=0.1)
         base64 = ModelFactory.call_image_edit("image_edit", bundle)
-        print("---------base64 generated successfully---------\n", len(base64))
         return base64
 
     def invoke(self, inputs, reference_images, output_path):
@@ -198,7 +197,6 @@ class GeneratorChain:
         base64 = self.generate_with_reference(
             result.get("cleaned_prompt", "No prompt generated"), reference_images
         )
-        print("---------base64 generated successfully---------\n", base64)
         image = self.base64_to_image(base64)
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         image.save(output_path)
